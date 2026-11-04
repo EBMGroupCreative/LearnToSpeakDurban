@@ -1,0 +1,237 @@
+const G2 = () => window.LSD2.games;
+
+// Spot the Vaalie: every round is a fresh, random beach scene. 5 vaalies hidden among locals.
+const SV_N = 5;
+const SV_PLACES = ['Saturday, North Beach.', 'Sunday, uShaka.', 'Tuesday, the Umhlanga promenade.', 'Friday, Wedge Beach at sunset.', 'Boxing Day, Addington.', 'Wednesday, Florida Road.'];
+const SV_LOCAL = [
+  'A laatie paddles out on a foam board.', 'Two aunties share a bunny under one umbrella.', 'The lifeguard waves at nobody.', 'A kook drops his board.', 'The water is warmer than the car park.',
+  'Somebody’s uncle is logging in his baggies.', 'A taxi plays yano at a responsible volume.', 'A bru says “shot” to the parking guard.', 'Three ouens carry one cooler box between them.', 'The stekkies are skitting near the speaker.',
+  'An auntie eats a bunny with her hands, as the law requires.', 'A dog runs into the ocean and has a lovely time.', 'Someone shouts “Chips!” and everyone ducks a frisbee.', 'The prawn man does good business.', 'A gran in slops says “voes’ek” to a monkey.',
+];
+const SV_VAALIE = [
+  ['A man in a ', 'flame shirt', ' sets up a gazebo.'], ['A family unpacks a ', 'gazebo with cup holders', '.'], ['A woman ', 'asks the lifeguard if the ocean is heated', '.'],
+  ['A guy ', 'swims in a wetsuit in Dezemba', '.'], ['A tourist ', 'asks for a fork with his bunny', '.'], ['Someone ', 'is still wearing a lanyard', ' on the sand.'],
+  ['A man ', 'calls the robot a traffic light', ' out loud.'], ['A couple ', 'asks what time the braai is', '.'], ['A dad ', 'applies factor 15 and calls it enough', '.'],
+  ['A guy ', 'puts on a Bluetooth earpiece to swim', '.'], ['Someone ', 'calls the beach “the Vaal, but wet”', '.'], ['A man ', 'answers a work call from the water', '.'],
+  ['A family ', 'parks the Fortuner on the promenade', '.'], ['A woman ', 'asks if the sharks are on a schedule', '.'], ['A guy ', 'says “Harties is basically the same”', '.'],
+  ['Someone ', 'brings a puffer jacket for the evening', '.'], ['A man ', 'checks the share price between waves', '.'], ['A tourist ', 'pronounces “bunny chow” with a silent w', '.'],
+];
+const svShuffle = a => { const o = [...a]; for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; } return o; };
+function svScene() {
+  const v = svShuffle(SV_VAALIE).slice(0, SV_N).map(([pre, k, post]) => ({ pre, k, post }));
+  const l = svShuffle(SV_LOCAL).slice(0, 6);
+  const mix = svShuffle([...v, ...l]);
+  return [SV_PLACES[Math.floor(Math.random() * SV_PLACES.length)], ...mix];
+}
+
+function VaalieGame2() {
+  const misses = G2().vaalieMiss;
+  const [scene, setScene] = React.useState(svScene);
+  const total = scene.filter(s => typeof s !== 'string').length;
+  const [found, setFound] = React.useState([]);
+  const [miss, setMiss] = React.useState(null);
+  const [n, setN] = React.useState(0);
+  const [rev, setRev] = React.useState(false);
+  const clock = useGameClock();
+  const reveal = () => { clock.stop(); setRev(true); setMiss(null); setFound(scene.filter(s => typeof s !== 'string').map(s => s.k)); };
+  const tapMiss = key => { if (found.length === total) return; clock.start(); setMiss(key); setN(x => x + 1); };
+  const again = () => { setScene(svScene()); setFound([]); setMiss(null); setN(0); setRev(false); clock.reset(); };
+  const accV = Math.max(300, 1000 - 100 * n), ptsV = Math.round(accV * speedMult(clock.secs, 20, 150));
+  const words = (t, key) => t.split(/(\s+)/).map((w, j) => { const k = key + '-' + j; if (!w.trim()) return w; return <span key={k} className="vw" onClick={() => tapMiss(k)}>{miss === k ? <Sel handles={false}>{w}</Sel> : w}</span>; });
+  if (!clock.started) return <GameGate id="game-02" kicker="Spot the Vaalie · timed" title={<>Five vaalies. One <Sel>beach.</Sel></>} line="Tap the giveaway, not the person. False reports cost you. So does dawdling." cta="[ Start the patrol ]" onStart={clock.start} />;
+  return (
+    <div className="gm-wrap">
+      <div className="between lbl"><span className="blue">Found {found.length} / {total}</span><span className="muted">{'False reports ' + pad2(n) + ' · ' + clockFmt(clock.secs)}</span></div>
+      <div className="vaalie">
+        {scene.map((s, i) => <React.Fragment key={i}>{i ? ' ' : ''}{typeof s === 'string' ? words(s, i) : <>{words(s.pre, i + 'a')}<span className={'vw' + (found.includes(s.k) ? ' found' : '')} onClick={() => { if (!found.includes(s.k)) { clock.start(); if (found.length + 1 === total) clock.stop(); setFound([...found, s.k]); setMiss(null); } }}>{found.includes(s.k) ? <Sel>{s.k}<Pop items={['Reported']} active={0} /></Sel> : s.k}</span>{words(s.post, i + 'b')}</>}</React.Fragment>)}
+      </div>
+      <div style={{ minHeight: 30 }} className="lead">{found.length === total ? <b>{rev ? 'All ' + total + ', revealed. The locals saw that.' : 'All ' + total + ' reported. Durban thanks you.'}</b> : miss ? misses[(n - 1) % misses.length] : 'Tap the giveaway, not the person. ' + (total - found.length) + ' still at large.'}</div>
+      {found.length === total && <ScoreBanner id="game-02" pts={ptsV} revealed={rev ? { answer: scene.filter(s => typeof s !== 'string').map(s => '“' + s.k + '”').join(', '), plural: true } : null} line={(n ? n + ' false report' + (n > 1 ? 's' : '') + ' × −100. The locals have noted it.' : 'Zero false reports. Clean patrol.') + speedLine(clock.secs, 20, 150)} />}
+      <div className="row"><button type="button" className={'btn sm ' + (found.length === total ? 'primary' : 'line')} onClick={again}>{found.length === total ? 'New beach' : 'Shuffle the beach'}</button>{found.length === total && <a className="btn line sm" href="#lessons/26">Lesson 26: Vaalie</a>}</div>
+      {found.length !== total && <RevealBtn id="game-02" onReveal={reveal} />}
+    </div>
+  );
+}
+
+function JaGame2() {
+  const [phase, setPhase] = React.useState('ready');
+  const [deck, setDeck] = React.useState([]);
+  const [i, setI] = React.useState(0);
+  const [pts, setPts] = React.useState(0);
+  const [left, setLeft] = React.useState(45);
+  const [flash, setFlash] = React.useState(null);
+  const [wrong, setWrong] = React.useState(0);
+  const early = phase === 'done' && left > 0 && i + 1 >= deck.length;
+  const score = Math.max(0, Math.min(1000, pts * 45 - wrong * 15 + (early ? left * 15 : 0)));
+  const start = () => { setWrong(0); setDeck([...G2().ja].sort(() => Math.random() - 0.5)); setI(0); setPts(0); setLeft(45); setFlash(null); setPhase('play'); };
+  React.useEffect(() => { if (phase !== 'play') return; const t = setInterval(() => setLeft(l => { if (l <= 1) { clearInterval(t); setPhase('done'); return 0; } return l - 1; }), 1000); return () => clearInterval(t); }, [phase]);
+  const answer = v => { if (phase !== 'play') return; const ok = deck[i][1] === v; if (ok) setPts(p => p + 1); else setWrong(w => w + 1); setFlash(ok ? 'ok' : 'no'); setTimeout(() => setFlash(null), 280); if (i + 1 >= deck.length) setPhase('done'); else setI(i + 1); };
+  React.useEffect(() => { const k = e => { if (e.key === 'j' || e.key === 'J') answer(true); if (e.key === 'n' || e.key === 'N') answer(false); }; addEventListener('keydown', k); return () => removeEventListener('keydown', k); });
+  const verdict = pts >= 18 ? 'Fluent. Possibly born on the beachfront.' : pts >= 12 ? 'Bru-level. Respectable.' : pts >= 6 ? 'Laatie-level. Keep practising.' : 'Vaalie-level. The Dictionary is open all night.';
+  if (phase === 'ready') return <div className="gm-center"><div className="hl" style={{ fontSize: 'clamp(48px, 6vw, 88px)' }}><Sel>No laka</Sel> means yes.</div><p className="lead" style={{ textAlign: 'center', margin: 0 }}>True or false, as fast as you can. 45 seconds.</p><HowCards id="game-03" /><button type="button" className="btn primary" onClick={start}>[ Start ]</button><ChallengeBtn id="game-03" /></div>;
+  if (phase === 'done') return <div className="gm-center"><span className="lbl blue">Time</span><div className="hl" style={{ fontSize: 'clamp(56px, 8vw, 120px)' }}>{pts + ' / ' + deck.length + ' '}<Sel>right.</Sel></div><p className="lead" style={{ textAlign: 'center', margin: 0 }}>{verdict}</p><ScoreBanner id="game-03" pts={score} line={pts + ' right × 45, ' + wrong + ' wrong × −15' + (early ? ', ' + left + ' seconds left × 15' : '') + '. Maths by Gateway.'} /><button type="button" className="btn primary" onClick={start}>[ Play again ]</button></div>;
+  return (
+    <div className="gm-center">
+      <div className="between lbl" style={{ width: '100%' }}><span className="blue">{'Q ' + pad2(i + 1) + ' / ' + pad2(deck.length) + ' · ' + pts + ' right · ' + score + ' / 1,000 marks'}</span><span className={left <= 10 ? 'blue' : 'muted'}>00:{pad2(left)}</span></div>
+      <div className={'ja-card' + (flash ? ' ' + flash : '')}>{deck[i][0]}</div>
+      <div className="row" style={{ justifyContent: 'center' }}><button type="button" className="btn primary ja-btn" onClick={() => answer(true)}>No laka</button><button type="button" className="btn line ja-btn" onClick={() => answer(false)}>Eish, no</button></div>
+    </div>
+  );
+}
+
+const DURDLE_MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function durdleToday() {
+  const now = new Date(), S = G2().durdle, dom = now.getDate();
+  const e = S.find(x => x.day === dom) || S[(dom - 1) % S.length];
+  return { ...e, answer: e.answer.toUpperCase(), key: now.toLocaleDateString('en-CA'), label: dom + ' ' + DURDLE_MON[now.getMonth()] };
+}
+
+// Durdle speed: full marks inside 45 seconds, sliding to half at about 10 minutes. Untimed (older saves) = full.
+const ddSpeed = s => s == null ? 1 : Math.max(0.5, Math.min(1, 1 - (s - 45) / 1100));
+const ddTime = s => Math.floor(s / 60) + ':' + pad2(s % 60);
+
+// Durdle share card: 1080 × 1080 PNG, drawn to canvas from CampaignAssets Orange 14d (paper, rounded tiles, selected score, lockup, wave, 031 slug).
+async function ddCard(grades, label, score) {
+  const P = window.LSD_PAL || {}, OR = P.blue || '#E8571E', HL = P.hl || '#FCD5BE', PAPER = P.paper || '#f4f0ea', INK = '#111111', MUTED = '#6e6e73';
+  const G = "'Switzer', 'Helvetica Neue', Arial, sans-serif", M = "'IBM Plex Mono', monospace";
+  try { await Promise.all(['800 150px Switzer', "500 22px 'IBM Plex Mono'"].map(f => document.fonts.load(f))); } catch (e) {}
+  const logo = await new Promise(r => { const im = new Image(); im.onload = () => r(im); im.onerror = () => r(null); im.src = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png'); });
+  const c = document.createElement('canvas'); c.width = c.height = 1080; const x = c.getContext('2d');
+  const rr = (X, Y, W, H, R) => { x.beginPath(); x.roundRect(X, Y, W, H, R); };
+  const mono = (t, X, Y, sz, col, al = 'left', ls = 0.08) => { x.font = '500 ' + sz + 'px ' + M; x.fillStyle = col; x.textAlign = al; x.letterSpacing = (sz * ls) + 'px'; x.fillText(t.toUpperCase(), X, Y); x.letterSpacing = '0px'; x.textAlign = 'left'; };
+  const handles = (X, Y, W, H, t, d) => { x.fillStyle = OR; x.fillRect(X - t / 2, Y, t, H); x.fillRect(X + W - t / 2, Y, t, H); x.beginPath(); x.arc(X, Y - d * 0.6, d, 0, Math.PI * 2); x.fill(); x.beginPath(); x.arc(X + W, Y + H + d * 0.6, d, 0, Math.PI * 2); x.fill(); };
+  const L = 72, R = 1080 - 72;
+  x.fillStyle = PAPER; x.fillRect(0, 0, 1080, 1080);
+  mono('Durdle · ' + label, L, 72 + 22, 22, INK); mono('One go a day', R, 72 + 22, 22, MUTED, 'right');
+  // tiles: up to 620 wide (the 14d proportion). The grid is capped at 310px tall so the score and tagline always clear the lockup, whatever the row count.
+  const n = Math.max(1, grades.length), gap = 16, maxH = 310, tile = Math.min((620 - gap * 4) / 5, (maxH - gap * (n - 1)) / n), rad = tile * 0.2;
+  let y = 72 + 22 + 70;
+  grades.forEach(row => { row.forEach((g, i) => { const X = L + i * (tile + gap); rr(X, y, tile, tile, rad); if (g === 'g') { x.fillStyle = OR; x.fill(); } else if (g === 'y') { x.fillStyle = HL; x.fill(); } else { x.fillStyle = '#fff'; x.fill(); x.strokeStyle = 'rgba(17,17,17,.12)'; x.lineWidth = 3; rr(X + 1.5, y + 1.5, tile - 3, tile - 3, rad); x.stroke(); } }); y += tile + gap; });
+  // score, selected
+  y += 50 - gap; x.font = '800 150px ' + G; x.letterSpacing = '-7.5px'; const sw = x.measureText(score).width; const top = y, h = 150 * 1.02;
+  x.fillStyle = HL; x.fillRect(L - 6, top, sw + 18, h); handles(L - 6, top, sw + 18, h, 4, 11);
+  x.fillStyle = INK; x.fillText(score, L, top + h * 0.83); x.letterSpacing = '0px';
+  mono('Today’s word stays at the beach.', L, top + h + 36 + 18, 22, INK);
+  // lockup (14d: --k 1.15): wordmark 49px, mono 26px, wave under the text block, Gateway mark on the right
+  const B = 1080 - 64, k = 26.5, lk = 49;
+  const ly = B - 196; x.font = '800 ' + lk + 'px ' + G; x.letterSpacing = (-lk * 0.045) + 'px';
+  const t1 = 'Learn to speak ', t2 = 'Durban.', w1 = x.measureText(t1).width, w2 = x.measureText(t2).width;
+  x.fillStyle = HL; x.fillRect(L + w1 - 3, ly - lk * 0.86, w2 + 8, lk * 1.02); handles(L + w1 - 3, ly - lk * 0.86, w2 + 8, lk * 1.02, 2, 6);
+  x.fillStyle = INK; x.fillText(t1 + t2, L, ly); x.letterSpacing = '0px';
+  mono('A public service by Gateway', L, ly + 44, k * 0.8, INK);
+  x.font = '500 ' + (k * 0.8) + 'px ' + M; x.letterSpacing = '0.5px'; x.fillStyle = OR; x.fillText('learntospeakdurban.com', L, ly + 92); x.letterSpacing = '0px';
+  const ww = Math.max(w1 + w2, 420), wh = ww * 24.6 / 418.3, wy = ly + 112;
+  if (window.LTSD_WAVE_D && window.Path2D) { x.save(); x.translate(L, wy); x.scale(ww / 418.3, wh / 24.6); x.translate(-40.5, -238); x.fillStyle = OR; x.fill(new Path2D(window.LTSD_WAVE_D)); x.restore(); }
+  mono(LTSD_SLUG, L, wy + wh + 26, 13, '#a1a1a6', 'left', 0.1);
+  if (logo) { const lh = 156, lw = logo.width / logo.height * lh; x.drawImage(logo, R - lw, B - lh - 20, lw, lh); }
+  return c;
+}
+
+function DurdleGame2() {
+  const [T] = React.useState(durdleToday);
+  const answer = T.answer, day = T.key;
+  const [saved, setSaved] = useStored('lsd2-durdle', null);
+  const today = saved && saved.day === day && saved.answer === answer && Array.isArray(saved.rows) ? saved.rows : [];
+  const [rows, setRowsS] = React.useState(today);
+  const [entered, setEntered] = React.useState(false);
+  const [resumed] = React.useState(() => today.includes(answer) || today.length >= 6 || !!(saved && saved.day === day && saved.answer === answer && saved.revealed));
+  const sameDay = saved && saved.day === day && saved.answer === answer;
+  const [start, setStart] = React.useState(sameDay ? saved.start || null : null);
+  const [end, setEnd] = React.useState(sameDay ? saved.end || null : null);
+  const [revealed, setRevealed] = React.useState(!!(sameDay && saved.revealed));
+  // Reveal: today's go is used, zero marks, no retry until midnight.
+  const reveal = () => { const e = Date.now(); setRevealed(true); setEnd(e); setCur(''); setSaved({ day, answer, rows, start, end: e, revealed: true }); };
+  const setRows = (n, e) => { setRowsS(n); setEnd(e); setSaved({ day, answer, rows: n, start, end: e }); };
+  const [cur, setCur] = React.useState('');
+  const [msg, setMsg] = React.useState(null);
+  const [note, setNote] = React.useState(null);
+  const [, copy] = useCopy();
+  const won = rows.includes(answer), done = won || rows.length >= 6 || revealed;
+  const secs = start && end ? Math.max(1, Math.round((end - start) / 1000)) : null;
+  const grade = g => { const res = Array(5).fill('x'); const pool = answer.split(''); g.split('').forEach((c, i) => { if (c === answer[i]) { res[i] = 'g'; pool[i] = null; } }); g.split('').forEach((c, i) => { if (res[i] !== 'g') { const j = pool.indexOf(c); if (j > -1) { res[i] = 'y'; pool[j] = null; } } }); return res; };
+  const ks = {}; rows.forEach(r => grade(r).forEach((st, i) => { const c = r[i]; if (st === 'g' || (st === 'y' && ks[c] !== 'g') || !ks[c]) ks[c] = st; }));
+  // Any five letters count as a guess. No word list: answers and guesses are often slang.
+  const press = k => {
+    if (done || !start) return;
+    if (k === 'Enter') { if (cur.length < 5) return setMsg('Five letters, bru.'); const n = [...rows, cur]; setRows(n, cur === answer || n.length >= 6 ? Date.now() : null); setCur(''); setMsg(cur === answer ? ['Lekker first try. Suspicious.', 'Shap. Two tries.', 'Three tries. Solid.', 'Four. Fine.', 'Five. Close one.', 'Six. Just.'][n.length - 1] : null); return; }
+    if (k === 'Delete') return setCur(cur.slice(0, -1));
+    if (/^[A-Z]$/.test(k) && cur.length < 5) setCur(cur + k);
+  };
+  React.useEffect(() => { const f = e => { if (e.metaKey || e.ctrlKey || e.altKey) return; if (e.key === 'Enter') press('Enter'); else if (e.key === 'Backspace') press('Delete'); else if (/^[a-z]$/i.test(e.key)) press(e.key.toUpperCase()); }; addEventListener('keydown', f); return () => removeEventListener('keydown', f); });
+  const grid = Array.from({ length: 6 }, (_, r) => r < rows.length ? { w: rows[r], g: grade(rows[r]) } : r === rows.length && !done ? { w: cur.padEnd(5), g: null } : { w: '     ', g: null });
+  const blocks = rows.map(r => grade(r).map(x => x === 'g' ? '🟧' : x === 'y' ? '🟨' : '⬜').join('')).join('\n');
+  const ddNo = ltsdDailyNo(), ddScore = revealed ? 'REVEALED' : (won ? rows.length : 'X') + '/6';
+  const ddR = { no: ddNo, kicker: 'No. ' + ddNo, score: ddScore, grades: rows.map(grade), revealed };
+  const [card, setCard] = React.useState(null);
+  React.useEffect(() => { if (!done) { setCard(null); return; } let live = true; ltsdResultCard('game-04', ddR).then(cv => { if (live) setCard(cv.toDataURL('image/png')); }); return () => { live = false; }; }, [done, rows.length, revealed]);
+  const squares = 'Durdle No. ' + ddNo + ': ' + ddScore + '\n\n' + blocks + '\n' + ltsdLink('activities/game-04') + '\n' + LTSD_TAGS;
+  const hint = T.source === 'dictionary' ? 'TODAY’S ANSWER IS IN THE DICTIONARY. HINT HINT.' : 'NOT IN THE DICTIONARY, BUT A BEACH VIBE.';
+  const status = revealed ? null : msg || (won ? (resumed ? 'Already solved today: ' + answer + '. Come back tomorrow.' : null) : done ? 'It was ' + answer + '. ' + T.clue : 'Orange: right spot. Highlighted: wrong spot. Grey: not in the word.');
+  if (!entered && (start || done)) return <GameGate id="game-04" kicker={'Durdle · ' + T.label + ' · ' + (done ? 'done for today' : 'clock still running')} title={<>Today’s <Sel>word.</Sel></>} line={done ? 'You’ve had your go today. Here’s how it works, for tomorrow.' : 'You started this one already. The clock didn’t wait.'} cta={done ? '[ See today’s result ]' : '[ Carry on ]'} onStart={() => setEntered(true)} />;
+  if (!start && !done) return <GameGate id="game-04" kicker={'Durdle · ' + T.label + ' · one go a day'} title={<>Today’s <Sel>word.</Sel></>} line="Five letters, six tries. The clue shows when you start. So does the clock." cta="[ Start today’s Durdle ]" onStart={() => { const s = Date.now(); setStart(s); setSaved({ day, answer, rows, start: s, end: null }); }} />;
+  return (
+    <div className="gm-center">
+      <div className="dd-hint">
+        <span className="lbl blue">{'Durdle · ' + T.label + ' · ' + hint}</span>
+        <span className="hl dd-clue">{'“' + T.clue + '”'}</span>
+      </div>
+      <div className="durdle">{grid.map((r, ri) => <div key={ri} className="d-row">{r.w.split('').map((c, ci) => <span key={ci} className={'d-cell' + (r.g ? ' ' + r.g[ci] : c.trim() ? ' typed' : '')}>{c.trim()}</span>)}</div>)}</div>
+      {status && <div className="lead" style={{ minHeight: 30, textAlign: 'center', margin: 0 }}>{status}</div>}
+      {done && <ScoreBanner id="game-04" share={false} revealed={revealed ? { answer } : null} pts={won ? Math.round([1000, 850, 700, 550, 400, 250][rows.indexOf(answer)] * ddSpeed(secs)) : 50} line={(won && secs != null ? 'Solved in ' + ddTime(secs) + '. ' : '') + (resumed ? 'Today’s word is done and filed. New word at midnight. No replays, bru.' : 'One go a day. New word at midnight.')} />}
+      {done && <div className="ltsd-art">{card && <img className="dd-card" src={card} alt={'Durdle share card, No. ' + ddNo + ', ' + ddScore} />}<ShareRow id="game-04" r={ddR} preview={false}><button type="button" className="btn line sm" onClick={() => { copy(squares); setNote('Copied. The squares travel well.'); }}>Copy the squares</button></ShareRow></div>}
+      {note && <div key={note} className="lbl blue lt-note">{note}</div>}
+      {!done && <div className="kbd">{['QWERTYUIOP', 'ASDFGHJKL', '+ZXCVBNM-'].map((row, i) => <div key={i} className="k-row">{row.split('').map(c => { const k = c === '+' ? 'Enter' : c === '-' ? 'Delete' : c; return <button key={k} type="button" className={'key' + (k.length > 1 ? ' wide' : '') + (ks[k] ? ' ' + ks[k] : '')} onClick={() => press(k)}>{k}</button>; })}</div>)}</div>}
+      {!done && <RevealBtn id="game-04" daily onReveal={reveal} />}
+    </div>
+  );
+}
+
+// Random round: a fresh mix of PACK and DON'T PACK items every time.
+function packDeal() { const all = G2().pack, n = G2().packDeal || { yes: 8, no: 6 }; return svShuffle([...svShuffle(all.filter(i => i.ok)).slice(0, n.yes), ...svShuffle(all.filter(i => !i.ok)).slice(0, n.no)]); }
+
+// Pack art: transparent PNGs in assets/pack/<slug>.png. Items not listed here render as text only.
+const PACK_ART_KEYS = ['R10 for the car guard', 'Baggies', 'Slops', 'Cozzie', 'Towel', 'Sunscreen', 'Aftersun', 'Cap', 'Sunnies', 'Cooler box', 'Braai tongs', 'Charcoal', 'Litchis', 'Cricket bat', 'Frisbee', 'Bodyboard', 'Goggles', 'Beach umbrella', 'Gazebo', 'Camp chair', 'Speaker', 'Mozzie spray', 'Bucket and spade', 'Fishing rod', 'Deck of cards', 'Laptop', 'Laptop charger', 'Lanyard', 'Wetsuit', 'Puffer jacket', 'Beanie', 'Scarf', 'Hairdryer', 'Straightener', 'Alarm clock', 'Watch', 'Diary', 'Meeting notes', 'Tie', 'Formal shoes', 'Gym membership card', 'Ring light', 'Extension cord', 'Umbrella (rain)', 'Fork', 'Q4 strategy doc', 'Business cards'];
+const packArt = k => k === 'Mangoes' ? LSD_RES('assets/migration/mango.png') : PACK_ART_KEYS.includes(k) ? LSD_RES('assets/pack/' + k.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.png') : null;
+const PackPic = ({ k, cls }) => { const s = packArt(k); return s ? <img className={cls || 'pack-pic'} src={s} alt="" draggable="false" /> : null; };
+
+function PackGame2() {
+  const [items, setItems] = React.useState(packDeal); const need = items.filter(i => i.ok).length;
+  const [, setForks] = useStored('lsd2-forks', 0);
+  const forked = React.useRef(false);
+  const [packed, setPacked] = React.useState([]);
+  const [err, setErr] = React.useState(null);
+  const [errs, setErrs] = React.useState(0);
+  const clock = useGameClock();
+  const pack = it => { if (packed.length === need) return; clock.start(); if (it.ok && !packed.includes(it.k) && packed.length + 1 === need) clock.stop(); if (!it.ok) { setErrs(e => e + 1); if (it.fork && !forked.current) { forked.current = true; setForks(n => (+n || 0) + 1); } return setErr(it); } if (!packed.includes(it.k)) setPacked([...packed, it.k]); };
+  const won = packed.length === need;
+  // Tap to pack, or drag and drop (mouse and touch): pick an item up off the bed, drop it in the suitcase. A press that doesn't move counts as a tap.
+  const suit = React.useRef(null);
+  const [drag, setDrag] = React.useState(null);
+  const overSuit = (x, y) => { const r = suit.current && suit.current.getBoundingClientRect(); return !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom; };
+  React.useEffect(() => {
+    if (!drag) return;
+    const mv = e => setDrag(d => d && { ...d, x: e.clientX, y: e.clientY, moved: d.moved || Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > 8, over: overSuit(e.clientX, e.clientY) });
+    const up = e => { const d = drag, moved = d.moved || Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > 8; setDrag(null); if (!moved || overSuit(e.clientX, e.clientY)) pack(d.it); };
+    const cancel = () => setDrag(null);
+    addEventListener('pointermove', mv); addEventListener('pointerup', up); addEventListener('pointercancel', cancel);
+    return () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', cancel); };
+  }, [drag && drag.it]);
+  if (!clock.started) return <GameGate id="game-05" kicker="Pack for Durban · timed" title={<>Pack for <Sel>Durban.</Sel></>} line="The bed is covered. Only some of it is going. Tap what you need, or drag it into the suitcase. Speed counts." cta="[ Start packing ]" onStart={clock.start} />;
+  return (
+    <div className="pack">
+      <div className="gm-wrap">
+        <span className="lbl muted">On the bed · tap it or drag it into the suitcase</span>
+        <div className="pack-items">{items.map(it => <button key={it.k} type="button" className={'pack-i' + (packed.includes(it.k) ? ' in' : '') + (drag && drag.moved && drag.it.k === it.k ? ' lifted' : '')} disabled={packed.includes(it.k) || won} onPointerDown={e => { if (packed.includes(it.k) || won) return; e.preventDefault(); setDrag({ it, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, moved: false, over: false }); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pack(it); } }}><PackPic k={it.k} /><span>{it.k}</span></button>)}</div>
+      </div>
+      <div ref={suit} className={'suitcase' + (drag && drag.moved && drag.over ? ' over' : '') + (won ? ' done' : '')}>
+        <div className="between lbl"><span>Suitcase</span><span className="blue">{packed.length + ' / ' + need + ' · ' + clockFmt(clock.secs)}</span></div>
+        <div className="suit-list">{packed.length ? packed.map(k => <span key={k} className="suit-i"><PackPic k={k} cls="suit-pic" /><span className="hl" style={{ fontSize: 32 }}><Sel handles={false}>{k}</Sel></span></span>) : <span className="muted">Empty. Like the beach on a Monday. Tap or drag things in here.</span>}</div>
+        {won && <><div className="lead" style={{ margin: 0 }}><b>Packed. Durban approves.</b> Nothing else is needed. Probably not even the towel.</div><ScoreBanner id="game-05" pts={Math.round(Math.max(250, 1000 - 150 * errs) * speedMult(clock.secs, 15, 90))} line={(errs ? errs + ' item' + (errs > 1 ? 's' : '') + ' rejected at the border. −' + errs * 150 + '.' : 'Clean pack. Customs had nothing to say.') + speedLine(clock.secs, 15, 90)} /><button type="button" className="btn line sm" style={{ alignSelf: 'flex-start' }} onClick={() => { setPacked([]); setErrs(0); forked.current = false; setItems(packDeal()); clock.reset(); }}>Pack again</button></>}
+      </div>
+      {drag && drag.moved && <span className="pack-ghost" style={{ left: drag.x, top: drag.y }}><PackPic k={drag.it.k} /><span>{drag.it.k}</span></span>}
+      {err && <div className="scrim" onClick={() => setErr(null)}><div className="dlg" onClick={e => e.stopPropagation()}><span className="lbl" style={{ color: 'var(--popover-on)' }}>{'System · ' + err.k}</span>{packArt(err.k) && <img className="pack-err-pic" src={packArt(err.k)} alt="" />}<div className="hl" style={{ fontSize: 40, margin: '14px 0 24px' }}>{err.h}</div>{err.b && <p style={{ margin: '-10px 0 24px', fontSize: 18, lineHeight: 1.45 }}>{err.b}</p>}<button type="button" className="btn primary sm" onClick={() => setErr(null)}>{err.a || (err.fork ? 'Surrender the fork' : 'Leave it behind')}</button></div></div>}
+    </div>
+  );
+}
+
+Object.assign(window, { VaalieGame2, JaGame2, DurdleGame2, PackGame2, ddCard });
