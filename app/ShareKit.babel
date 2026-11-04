@@ -1,0 +1,221 @@
+// SHARING SYSTEM. One pipeline for every game: [ Share this ] (native share sheet, clipboard fallback), [ Save the card ] (1080 × 1350 PNG),
+// "Challenge someone" on intro screens, campaign hashtags on everything, Plausible "share" events. Sharing earns nothing, ever.
+const LTSD_URL = 'https://learntospeakdurban.com';
+// The campaign's tracking handles. Always both, always this order, always this spelling.
+const LTSD_TAGS = '#LearnToSpeakDurban #GatewayTheatreOfShopping';
+const LTSD_QUIZ = { id: 'quiz', t: 'How Durban are you?', route: 'kit/quiz' };
+const ltsdGame = id => id === 'quiz' ? LTSD_QUIZ : (() => { const g = (typeof GAMES2 !== 'undefined' ? GAMES2 : []).find(x => x.id === id) || { id, t: 'Learn to Speak Durban' }; return { ...g, route: 'activities/' + id }; })();
+const ltsdLink = route => LTSD_URL + '/' + (route ? '#' + route : '');
+// Share text: the line, then the game link, then the hashtags on their own line.
+const ltsdCompose = (line, route) => line + '\n' + ltsdLink(route) + '\n' + LTSD_TAGS;
+// Daily number: No. 1 = LSD_CONFIG.dailyStart (YYYY-MM-DD, local date). Everyone on the same day gets the same number.
+const ltsdDailyNo = () => { const [y, m, d] = String((window.LSD_CONFIG || {}).dailyStart || '2026-11-01').split('-').map(Number), n = new Date(); return Math.max(1, Math.round((Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()) - Date.UTC(y, m - 1, d)) / 864e5) + 1); };
+
+function ltsdShareLine(id, r) {
+  const n = ltsdGame(id).t;
+  if (!r) return 'I’m studying. This is studying. ' + n + ':';
+  if (r.revealed) return n + (r.no ? ' No. ' + r.no : '') + ': REVEALED. 0 marks. Knowing isn’t the same as learning, ekse.';
+  if (id === 'game-04') return 'Durdle No. ' + r.no + ': ' + r.score + '. Today’s word is very Durban.';
+  if (id === 'game-12') return 'Lost & Found No. ' + r.no + ': ' + r.found + '/8 found. The rest are still out at low tide.';
+  if (id === 'game-13') return 'The Deck Chair No. ' + r.no + ': ' + (r.wrong ? r.wrong + ' wrong letter' + (r.wrong === 1 ? '' : 's') : 'clean sheet') + '. Lekker chair.';
+  if (id === 'game-15') return r.mine === false ? 'The auntie did not choose my card. There is no appeals process. Deal yourself in:' : 'The auntie chose my card. There is no appeals process. Deal yourself in:';
+  if (id === 'quiz') return r.title + '. That’s my official diagnosis. Get yours:';
+  if (r.pts != null) return 'I got ' + ptsFmt(r.pts) + ' marks on ' + n + '. The Class Rankings are watching.';
+  return 'I’m studying. This is studying. ' + n + ':';
+}
+const ltsdShareText = (id, r) => ltsdCompose(ltsdShareLine(id, r), ltsdGame(id).route);
+
+// Plausible custom event. Queues until the script loads; harmless if it never does.
+function ltsdEvent(name, props) { try { window.plausible = window.plausible || function () { (window.plausible.q = window.plausible.q || []).push(arguments); }; window.plausible(name, { props }); } catch (e) {} }
+const ltsdTrack = (game, via) => ltsdEvent('share', { game, via });
+// Resolves true only if the text really reached the clipboard. Call it straight from the click, before any await.
+async function ltsdCopy(text) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch (e) {}
+  try { const t = document.createElement('textarea'); t.value = text; t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;opacity:0;top:0;left:0'; document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove(); return !!ok; } catch (e) { return false; }
+}
+// Desktop = no native share sheet. Phones keep navigator.share.
+const ltsdDesk = () => !navigator.share;
+function ltsdToast(msg) {
+  let el = document.getElementById('ltsd-toast');
+  if (!el) { el = document.createElement('div'); el.id = 'ltsd-toast'; el.className = 'ltsd-toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+  el.textContent = msg; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 2800);
+}
+// The link lives inside `text` (not `url`): share targets order text + url differently and some drop the text,
+// so this is the only way the hashtags reliably land after the link.
+async function ltsdShareLink(id, r, via) {
+  const text = ltsdShareText(id, r);
+  ltsdTrack(id, via || 'link');
+  if (navigator.share) { try { await navigator.share({ title: ltsdGame(id).t + ' · Learn to Speak Durban.', text }); } catch (e) {} return true; }
+  const ok = await ltsdCopy(text);
+  ltsdToast(ok ? 'Copied. Send it, ekse.' : 'The clipboard said no. Copy it below, ekse.');
+  return ok;
+}
+
+// Who signed it: only students with a card get named, like a signed exam paper.
+function ltsdSigner() {
+  try {
+    const J = k => JSON.parse(localStorage.getItem(k) || 'null');
+    const sess = J('lsd2-session'), p = sess ? (J('lsd2-profiles') || {})[sess] : null;
+    const no = p && p.no ? String(p.no).replace(/^LSD-/, 'LTSD-') : J(lsdKey('lsd2-cardno'));
+    const name = String(J(lsdKey('lsd2-name')) || (p && p.name) || '').trim();
+    if (!no || !name || (window.lsdBlocked && window.lsdBlocked(name))) return null;
+    return { name, no };
+  } catch (e) { return null; }
+}
+
+// ── RESULT CARD ── 1080 × 1350. Campaign paper, ink type, orange does one job: the selection (handles, Durdle hits, the wave).
+const LTSD_CW = 1080, LTSD_CH = 1350;
+let ltsdAssetsP = null;
+const ltsdAssets = () => ltsdAssetsP || (ltsdAssetsP = Promise.all([
+  Promise.all(['800 120px Switzer', '600 40px Switzer', '500 40px Switzer', "500 22px 'IBM Plex Mono'"].map(f => document.fonts.load(f))).catch(() => {}),
+  new Promise(r => { const im = new Image(); im.onload = () => r(im); im.onerror = () => r(null); im.src = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png'); }),
+]).then(([, logo]) => ({ logo })));
+
+function ltsdDraw(cv, id, r, A) {
+  const P = window.LSD_PAL || {}, OR = P.blue || '#E8571E', HL = P.hl || '#FCD5BE', PAPER = P.paper || '#f4f0ea', INK = '#111111', MUTED = '#6e6e73', POP = '#1d1d1f';
+  const G = "'Switzer', 'Helvetica Neue', Arial, sans-serif", M = "'IBM Plex Mono', monospace";
+  const W = LTSD_CW, H = LTSD_CH, L = 88, R = W - 88, CW = R - L;
+  cv.width = W; cv.height = H; const x = cv.getContext('2d'); x.textBaseline = 'alphabetic'; x.textAlign = 'left';
+  const mono = (t, X, Y, sz, col, al, ls, raw) => { x.font = '500 ' + sz + 'px ' + M; x.fillStyle = col || INK; x.textAlign = al || 'left'; x.letterSpacing = (ls == null ? sz * 0.08 : ls) + 'px'; x.fillText(raw ? t : String(t).toUpperCase(), X, Y); x.letterSpacing = '0px'; x.textAlign = 'left'; };
+  const rr = (X, Y, w, h, rad) => { x.beginPath(); x.moveTo(X + rad, Y); x.arcTo(X + w, Y, X + w, Y + h, rad); x.arcTo(X + w, Y + h, X, Y + h, rad); x.arcTo(X, Y + h, X, Y, rad); x.arcTo(X, Y, X + w, Y, rad); x.closePath(); };
+  const gro = (sz, wt) => { x.font = (wt || 800) + ' ' + sz + 'px ' + G; x.letterSpacing = (wt && wt < 700 ? -sz * 0.01 : -sz * 0.045) + 'px'; };
+  const handles = (X, Y, w, h, bar, dot) => { x.fillStyle = OR; x.fillRect(X - bar / 2, Y, bar, h); x.fillRect(X + w - bar / 2, Y, bar, h); x.beginPath(); x.arc(X, Y - dot * 0.7, dot, 0, 7); x.fill(); x.beginPath(); x.arc(X + w, Y + h + dot * 0.7, dot, 0, 7); x.fill(); };
+  // selected word: highlight + handles, the site's signature
+  const sel = (t, X, base, sz) => { gro(sz); const w = x.measureText(t).width, top = base - sz * 0.8, h = sz * 0.98, px = sz * 0.04; x.fillStyle = HL; x.fillRect(X - px, top, w + px * 2, h); handles(X - px, top, w + px * 2, h, Math.max(3, sz * 0.022), Math.max(6, sz * 0.055)); x.fillStyle = INK; x.fillText(t, X, base); x.letterSpacing = '0px'; return w; };
+  const fitG = (t, max, sz, min) => { gro(sz); while (sz > min && x.measureText(t).width > max) { sz -= 4; gro(sz); } return sz; };
+  const wrap = (t, max) => { const out = []; let cur = ''; String(t).split(/\s+/).forEach(w => { const n = cur ? cur + ' ' + w : w; if (cur && x.measureText(n).width > max) { out.push(cur); cur = w; } else cur = n; }); if (cur) out.push(cur); return out; };
+
+  x.fillStyle = PAPER; x.fillRect(0, 0, W, H);
+  const g = ltsdGame(id);
+  // top: game name in the mono caption style
+  mono(g.t, L, 112, 26, INK); mono(r.kicker || 'Result slip', R, 112, 26, MUTED, 'right');
+  x.fillStyle = 'rgba(17,17,17,.12)'; x.fillRect(L, 144, CW, 2);
+
+  // middle: the result, huge. Laid out in [TOP, BOT], centred vertically.
+  const TOP = 190, BOT = 960;
+  if (r.grades) {
+    const n = Math.max(1, r.grades.length), gap = 16, tile = Math.min((CW * 0.72 - gap * 4) / 5, (400 - gap * (n - 1)) / n), rad = tile * 0.2, gw = tile * 5 + gap * 4;
+    const scoreSz = 200, block = n * tile + (n - 1) * gap + 70 + scoreSz + 110;
+    let y = TOP + (BOT - TOP - block) / 2;
+    r.grades.forEach(row => { row.forEach((s, i) => { const X = L + i * (tile + gap); rr(X, y, tile, tile, rad); if (s === 'g') { x.fillStyle = OR; x.fill(); } else if (s === 'y') { x.fillStyle = HL; x.fill(); } else { x.fillStyle = '#fff'; x.fill(); x.strokeStyle = 'rgba(17,17,17,.12)'; x.lineWidth = 3; rr(X + 1.5, y + 1.5, tile - 3, tile - 3, rad); x.stroke(); } }); y += tile + gap; });
+    y += 70 - gap + scoreSz * 0.8;
+    if (r.revealed) { sel('Revealed.', L + 6, y, fitG('Revealed.', CW - 40, scoreSz, 100)); mono('Revealed · 0 marks · no spoilers', L, y + 96, 24, INK); }
+    else { sel(r.score, L + 6, y, scoreSz); mono('No spoilers. Today’s word stays at the beach.', L, y + 96, 24, INK); }
+  } else if (r.quiz) {
+    const big = 250, lvSz = fitG(r.lv + '.', CW, 150, 80), descSz = 34;
+    gro(34, 600); const dl = wrap(r.lvd, CW - 60);
+    const block = big + 90 + lvSz + 50 + (30 + dl.length * 44);
+    let y = TOP + (BOT - TOP - block) / 2 + big * 0.8;
+    const pw = sel(r.pct + '%', L + 10, y, big); let ds = 110; gro(ds); while (ds > 56 && L + 10 + pw + 48 + x.measureText('Durban.').width > R) { ds -= 6; gro(ds); }
+    x.fillStyle = INK; x.fillText('Durban.', L + 10 + pw + 48, y); x.letterSpacing = '0px';
+    y += big * 0.2 + 90 + lvSz * 0.8; mono('Official diagnosis', L, y - lvSz * 0.8 - 14, 22, MUTED); gro(lvSz); x.fillStyle = INK; x.fillText(r.lv + '.', L, y); x.letterSpacing = '0px';
+    const py = y + 50, ph = 30 + dl.length * 44; x.font = '600 ' + descSz + 'px ' + G; x.letterSpacing = '0px';
+    const pwid = Math.min(CW, Math.max(...dl.map(t => x.measureText(t).width)) + 56);
+    x.fillStyle = POP; rr(L, py, pwid, ph, 18); x.fill(); x.beginPath(); x.moveTo(L + 30, py + 1); x.lineTo(L + 44, py - 14); x.lineTo(L + 58, py + 1); x.fill();
+    x.fillStyle = '#fff'; dl.forEach((t, i) => x.fillText(t, L + 28, py + 44 + i * 44));
+  } else if (r.prompt) {
+    // the winning card, set like a playing card from the printed deck
+    const cw = 760, chh = 680, cx = (W - cw) / 2, cy = TOP + (BOT - TOP - chh) / 2, pad = 60;
+    x.save(); x.translate(W / 2, cy + chh / 2); x.rotate(-0.035); x.translate(-W / 2, -(cy + chh / 2));
+    x.shadowColor = 'rgba(0,0,0,.16)'; x.shadowBlur = 50; x.shadowOffsetY = 18; x.fillStyle = '#fff'; rr(cx, cy, cw, chh, 40); x.fill(); x.shadowColor = 'transparent';
+    mono('Aunties Against Everyone', cx + pad, cy + pad + 14, 20, OR);
+    const parts = String(r.prompt).split('____'), ans = String(r.card).replace(/[.!]$/, '');
+    const toks = []; parts.forEach((p, i) => { p.split(/(\s+)/).forEach(w => w && toks.push({ s: w, hl: false })); if (i < parts.length - 1) ans.split(/(\s+)/).forEach(w => w && toks.push({ s: w, hl: true })); });
+    const maxW = cw - pad * 2; let fs = 76, lines;
+    const lay = () => { gro(fs); x.letterSpacing = (-fs * 0.03) + 'px'; const out = [[]]; let w = 0; toks.forEach(t => { if (/^\s+$/.test(t.s)) { if (out[out.length - 1].length) { out[out.length - 1].push(t); w += x.measureText(' ').width; } return; } const tw = x.measureText(t.s).width; if (w + tw > maxW && out[out.length - 1].length) { const l = out[out.length - 1]; while (l.length && /^\s+$/.test(l[l.length - 1].s)) l.pop(); out.push([]); w = 0; } out[out.length - 1].push(t); w += tw; }); return out.filter(l => l.length); };
+    lines = lay(); while (lines.length * fs * 1.12 > chh - pad * 2 - 130 && fs > 34) { fs -= 4; lines = lay(); }
+    let y = cy + pad + 80 + fs * 0.8;
+    lines.forEach(l => { let X = cx + pad; l.forEach((t, i) => { const w = x.measureText(t.s).width; if (t.hl) { x.fillStyle = HL; x.fillRect(X - 4, y - fs * 0.8, w + 8, fs * 0.98); } X += w; }); X = cx + pad; l.forEach(t => { x.fillStyle = INK; x.fillText(t.s, X, y); X += x.measureText(t.s).width; }); y += fs * 1.12; });
+    x.letterSpacing = '0px';
+    x.fillStyle = 'rgba(17,17,17,.1)'; x.fillRect(cx + pad, cy + chh - pad - 46, maxW, 2);
+    mono(r.mine === false ? 'Not my card · her decision is final' : 'My card · the auntie’s choice', cx + pad, cy + chh - pad, 18, MUTED); mono('No appeals', cx + cw - pad, cy + chh - pad, 18, MUTED, 'right');
+    x.restore();
+  } else {
+    const rv = !!r.revealed, big = rv ? 'Revealed.' : r.big != null ? String(r.big) : ptsFmt(r.pts || 0), unit = rv ? '0 marks.' : r.unit || 'marks.', sub = rv ? 'Knowing isn’t the same as learning, ekse.' : r.sub || 'The Class Rankings are watching.';
+    const bs = fitG(big, CW - 40, 300, 140), us = 130; x.font = '500 40px ' + G; x.letterSpacing = '-0.4px'; const sl = wrap(sub, CW - 8);
+    const block = bs * 0.8 + 50 + us * 0.8 + 56 + sl.length * 52;
+    let y = TOP + (BOT - TOP - block) / 2 + bs * 0.8;
+    mono(rv ? 'Revealed · 0 marks' : r.label || 'Result', L, y - bs * 0.8 - 40, 22, MUTED); sel(big, L + 12, y, bs);
+    y += 50 + us * 0.8 + bs * 0.18; gro(us); x.fillStyle = INK; x.fillText(unit, L + 4, y); x.letterSpacing = '0px';
+    y += 64; x.font = '500 40px ' + G; x.letterSpacing = '-0.4px'; x.fillStyle = INK; sl.forEach((t, i) => x.fillText(t, L + 4, y + i * 52)); x.letterSpacing = '0px';
+  }
+
+  // bottom block: lockup + wave (as the printed Aunties deck), URL, hashtags, the 031 fine print
+  const ly = 1046, lk = 60; gro(lk);
+  const t1 = 'Learn to speak ', t2 = 'Durban.', w1 = x.measureText(t1).width, w2 = x.measureText(t2).width;
+  x.fillStyle = HL; x.fillRect(L + w1 - 3, ly - lk * 0.86, w2 + 8, lk * 1.02); handles(L + w1 - 3, ly - lk * 0.86, w2 + 8, lk * 1.02, 3, 6.5);
+  x.fillStyle = INK; x.fillText(t1 + t2, L, ly); x.letterSpacing = '0px';
+  mono('A public service by Gateway', L, ly + 46, 22, INK);
+  mono('learntospeakdurban.com', L, ly + 82, 22, INK, 'left', 0.5, true);
+  const ww = Math.max(w1 + w2, 460), wh = ww * 24.6 / 418.3, wy = ly + 104;
+  if (window.LTSD_WAVE_D && window.Path2D) { x.save(); x.translate(L, wy); x.scale(ww / 418.3, wh / 24.6); x.translate(-40.5, -238); x.fillStyle = OR; x.fill(new Path2D(window.LTSD_WAVE_D)); x.restore(); }
+  mono(LTSD_TAGS, L, wy + wh + 46, 21, INK, 'left', 0.4, true);
+  const s = ltsdSigner();
+  mono((s ? 'Signed: ' + s.name + ' · ' + s.no + ' · ' : '') + LTSD_SLUG, L, wy + wh + 82, 15, '#a1a1a6', 'left', 1.5);
+  if (A && A.logo) { const lh = 168, lw = A.logo.width / A.logo.height * lh; x.drawImage(A.logo, R - lw, ly + 82 - lh + 8, lw, lh); }
+  return cv;
+}
+async function ltsdResultCard(id, r, cv) { const A = await ltsdAssets(); return ltsdDraw(cv || document.createElement('canvas'), id, r, A); }
+
+// ltsd-[game]-[date].png, e.g. ltsd-durdle-12dez.png, ltsd-deck-chair-3jan.png
+const LTSD_MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dez'];
+function ltsdFileName(id) {
+  const g = id === 'quiz' ? 'how-durban-are-you' : String(ltsdGame(id).t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').replace(/^the-/, '');
+  const d = window.lsdNow ? lsdNow() : new Date();
+  return 'ltsd-' + g + '-' + d.getDate() + LTSD_MON[d.getMonth()] + '.png';
+}
+async function ltsdCardBlob(id, r) { const cv = await ltsdResultCard(id, r); return new Promise(res => cv.toBlob(res, 'image/png')); }
+function ltsdDownload(b, name) { const u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+// Phones: the card goes to the native share sheet as a file.
+async function ltsdShareCard(id, r) {
+  const b = await ltsdCardBlob(id, r), name = ltsdFileName(id);
+  const f = new File([b], name, { type: 'image/png' }), text = ltsdShareText(id, r);
+  ltsdTrack(id, 'card');
+  if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], text }); } catch (e) {} return; }
+  ltsdDownload(b, name); ltsdToast('Card saved. Post it somewhere inland.');
+}
+// Desktop: one click downloads the card AND copies the caption. If the clipboard refuses, returns the text for a manual field.
+async function ltsdShareDesk(id, r, card) {
+  const text = ltsdShareText(id, r), copying = ltsdCopy(text); // start the copy inside the click, before the canvas render
+  ltsdTrack(id, card ? 'desktop' : 'link');
+  let dl = false;
+  if (card) { try { ltsdDownload(await ltsdCardBlob(id, r), ltsdFileName(id)); dl = true; } catch (e) {} }
+  const ok = await copying;
+  ltsdToast(ok ? (dl ? 'Card downloaded. Caption copied. Go post, ekse.' : card ? 'Caption copied. The card got stuck. Try again, ekse.' : 'Copied. Send it, ekse.')
+    : (dl ? 'Card downloaded. Caption below. Copy it, ekse.' : 'The clipboard said no. Copy it below, ekse.'));
+  return ok ? null : text;
+}
+// Never fail silently: when the clipboard is blocked, the caption sits here, ready to select.
+function ManualCaption({ text }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => { const t = ref.current; if (t) { t.focus({ preventScroll: true }); t.select(); } }, [text]);
+  return <label className="ltsd-manual lt-in"><span className="lbl blue">The clipboard said no. It’s selected, so press copy.</span><textarea ref={ref} className="field" readOnly rows={4} value={text} onFocus={e => e.target.select()}></textarea></label>;
+}
+
+// Sits directly under the result, always.
+// Phones: [ Share this ] (native sheet, text + link) + [ Save the card ] (native sheet, image).
+// Desktop: those would be the same job, so it's one [ Share this ]: card downloads + caption copies.
+function ShareRow({ id, r, card = true, children }) {
+  const [busy, setBusy] = React.useState(false);
+  const [manual, setManual] = React.useState(null);
+  const desk = ltsdDesk();
+  const run = async fn => { if (busy) return; setBusy(true); setManual(null); try { await fn(); } finally { setBusy(false); } };
+  const share = () => desk ? run(async () => setManual(await ltsdShareDesk(id, r, card))) : ltsdShareLink(id, r, 'result');
+  return (
+    <div className="ltsd-share">
+      <button type="button" className="btn primary" onClick={share} aria-busy={busy}>{busy && desk ? 'Printing the card…' : '[ Share this ]'}</button>
+      {card && !desk && <button type="button" className="btn line" onClick={() => run(() => ltsdShareCard(id, r))} aria-busy={busy}>{busy ? 'Printing the card…' : '[ Save the card ]'}</button>}
+      {children}
+      {manual && <ManualCaption text={manual} />}
+    </div>
+  );
+}
+// Intro screens: share before playing. No card yet, so desktop just copies the challenge.
+function ChallengeBtn({ id }) {
+  const [manual, setManual] = React.useState(null);
+  const go = async () => { setManual(null); if (ltsdDesk()) setManual(await ltsdShareDesk(id, null, false)); else ltsdShareLink(id, null, 'challenge'); };
+  return <span className="ltsd-chal-w"><button type="button" className="btn line sm ltsd-chal" onClick={go}>Challenge someone</button>{manual && <ManualCaption text={manual} />}</span>;
+}
+
+Object.assign(window, { ltsdEvent, LTSD_URL, LTSD_TAGS, ltsdGame, ltsdLink, ltsdCompose, ltsdDailyNo, ltsdShareText, ltsdTrack, ltsdCopy, ltsdToast, ltsdShareLink, ltsdSigner, ltsdResultCard, ltsdShareCard, ltsdShareDesk, ltsdFileName, ShareRow, ChallengeBtn, ManualCaption });

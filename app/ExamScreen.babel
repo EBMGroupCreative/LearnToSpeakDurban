@@ -1,0 +1,109 @@
+// Exam unlock date (local midnight). Change this one line to move it. Month is 0-based: 11 = December.
+const EXAM_UNLOCK = new Date(2026, 11, 1);
+const EXAM_N = window.LSD2.exam.length, EXAM_PASS = Math.round(EXAM_N * 0.69); // 35 of 50
+
+// All questions, one per word, in lesson order.
+function drawExam() {
+  return window.LSD2.exam.map((_, i) => i);
+}
+
+const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+const cdText = cd => plural(cd.days, 'day') + ', ' + plural(cd.h, 'hour') + ' and ' + plural(cd.m, 'minute');
+
+function ExamScreen() {
+  const [stage, setStage] = React.useState('intro');
+  const [name, setName] = useStored('lsd2-name', '');
+  const [set, setSet] = React.useState(drawExam);
+  const [i, setI] = React.useState(0);
+  const [pick, setPick] = React.useState(null);
+  const [score, setScore] = React.useState(0);
+  const cd = useCountdown(EXAM_UNLOCK);
+  const [force, setForce] = React.useState(false);
+  const [, setBest] = useStored('lsd2-exam', null);
+  React.useEffect(() => { if (stage === 'done') setBest(b => ({ best: Math.max(score, b ? b.best : 0), last: score, at: new Date().toISOString() })); }, [stage]);
+  const Q = window.LSD2.exam[set[i]];
+  const start = () => { setSet(drawExam()); setI(0); setPick(null); setScore(0); setStage('q'); };
+  const choose = k => { if (pick !== null) return; setPick(k); if (k === Q.c) setScore(s => s + 1); };
+  const next = () => { if (i < EXAM_N - 1) { setI(i + 1); setPick(null); } else setStage('done'); };
+
+  if (!cd.open && !force) return (
+    <div className="exam">
+      <PageHead index="05" kicker="The final exam" title="Not yet, ekse." />
+      <div className="card ex-card">
+        <p className="lead" style={{ margin: '0 0 24px' }}>The final exam covers all 50 words and unlocks 1 Dezemba. You have {cdText(cd)} to study. That’s more notice than HR gives you.</p>
+        <div className="row"><a className="btn primary" href="#lessons/01">Revise the lessons</a>{/* DEV ONLY: this button skips the 1 Dezemba lock for testing. DELETE IT (and the "force" state) BEFORE PRODUCTION. */}
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><button type="button" className="btn line" onClick={() => setForce(true)}>Sit it anyway (testing)</button><span className="lbl" style={{ color: '#c0392b' }}>Testing only · remove before launch</span></span></div>
+      </div>
+    </div>
+  );
+
+  if (stage === 'intro') return (
+    <div className="exam">
+      <PageHead index="05" kicker={cd.open ? 'The final exam · open since 1 Dezemba · class is in session' : 'The final exam'} title="The final exam." />
+      <div className="card ex-card">
+        <p className="lead" style={{ margin: '0 0 24px' }}>{cd.open ? 'It’s open. You had more notice than HR ever gave you. ' : ''}All 50 words. No notes, no translator, no phoning your bru. Pass mark: fluent-ish.</p>
+        <label className="lbl muted" htmlFor="ex-name">Name for the certificate</label>
+        <input id="ex-name" className="field" style={{ margin: '8px 0 24px', fontSize: 20 }} placeholder="Your name, spelt how your gran spells it" value={name} onChange={e => setName(e.target.value)} />
+          <BlockNote v={name} msg="Not on the card, bru." />
+        <div className="row"><button type="button" className="btn primary" onClick={start}>[ Begin the exam ]</button><a className="btn line" href="#lessons/01">Cram first</a></div>
+      </div>
+    </div>
+  );
+
+  if (stage === 'q') return (
+    <div className="exam">
+      <div className="card ex-card">
+        <div className="segs">{Array.from({ length: EXAM_N }).map((_, k) => <i key={k} className={k < i || (k === i && pick !== null) ? 'd' : ''}></i>)}</div>
+        <div className="between lbl" style={{ marginTop: 18 }}><span className="blue">Question {pad2(i + 1)} / {EXAM_N}</span><span className="muted">{'Lesson ' + Q.w}</span></div>
+        <div className="ex-q">{Q.q}</div>
+        <div className="ex-ans">
+          {Q.a.map((a, k) => {
+            const st = pick === null ? '' : k === Q.c ? ' right' : k === pick ? ' wrong' : ' dim';
+            return <button key={k} type="button" className={'ans' + st} disabled={pick !== null} onClick={() => choose(k)}>
+              <span className="k">{'abc'[k]}</span><span>{a}</span>
+              {pick !== null && k === Q.c && <span className="lbl tag blue">Lekker</span>}
+              {pick === k && k !== Q.c && <span className="lbl tag">Eish</span>}
+            </button>;
+          })}
+        </div>
+        <div className="between" style={{ marginTop: 28 }}>
+          <span className="lbl muted">{'Marks ' + pad2(score)}</span>
+          <button type="button" className="btn primary sm" disabled={pick === null} onClick={next}>{i < EXAM_N - 1 ? 'Next question' : 'See results'}</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const pass = score >= EXAM_PASS;
+  if (!pass) return (
+    <div className="exam">
+      <div className="fail">
+        <span className="lbl" style={{ color: 'var(--popover-on)' }}>Result · LTSD-2026</span>
+        <div className="hl" style={{ fontSize: 'clamp(56px, 8vw, 104px)', margin: '18px 0 14px' }}>Eish. {score}/{EXAM_N}.</div>
+        <p className="lead" style={{ margin: '0 0 28px', color: '#fff' }}>Rewrite immediately. The ocean isn’t going anywhere.</p>
+        <div className="row"><button type="button" className="btn primary" onClick={start}>[ Try again ]</button><a className="btn line inv" href="#lessons/01">Study the lessons</a></div>
+      </div>
+    </div>
+  );
+  return (
+    <div className="exam">
+      <div className="card cert">
+        <div className="seal"><div><div className="lbl" style={{ fontSize: 9 }}>Certified</div><div className="hl" style={{ fontSize: 30 }}>Fluent</div><div className="lbl" style={{ fontSize: 9 }}>2026</div></div></div>
+        <div className="lbl blue">Certificate of Fluency · LTSD-2026</div>
+        <div className="lbl muted" style={{ marginTop: 40 }}>This certifies that</div>
+        {/* Certificate name is Mode B (strict). PRODUCTION: route all free text through a server-side moderation API (e.g. OpenAI Moderation / Azure AI Content Safety) PLUS this custom SA wordlist before rendering. Client-side filtering is a placeholder and must not ship as the only defence. Shareable text and Submit a word entries should also be human-reviewed where feasible. */}
+        <div className="hl cert-name">{safeText(name).trim() || 'A fluent student'}</div>
+        <div className="hl" style={{ fontSize: 'clamp(32px, 4vw, 52px)' }}>speaks <Sel>Durban.</Sel></div>
+        <div className="lbl" style={{ marginTop: 28 }}>Score {score} / {EXAM_N} · Redeemable at Gateway, Durban</div>
+        <div className="between cert-foot"><span className="lbl">Learn to Speak Durban. A public service by Gateway. <a className="muted" href="#report">Report</a></span><img src={LSD_RES((window.LSD_ASSETS || '../../assets/') + 'logos/gateway-logo.png')} alt="Gateway" style={{ height: 44, width: 'auto' }} /></div>
+        <div className="cert-031">{LTSD_SLUG}</div>
+      </div>
+      <div className="row" style={{ justifyContent: 'center', marginTop: 24 }}>
+        <button type="button" className="btn primary" onClick={() => window.print()}>Save certificate</button>
+        <button type="button" className="btn line" onClick={start}>Sit it again</button>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { ExamScreen, EXAM_UNLOCK });

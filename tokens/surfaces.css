@@ -1,0 +1,11 @@
+:root{
+--bg-graph:var(--paper);
+--bg-dots:linear-gradient(#f6f6f4,#ebebe8);
+--bg-soft:linear-gradient(#f5f5f3,#e8e8e5);
+--bg-hatch:var(--paper-3);
+}
+.lsd-graph{background:var(--bg-graph)}
+.lsd-dots{background:var(--bg-dots)}
+.lsd-soft{background:var(--bg-soft)}
+::selection{background:var(--highlight);color:var(--ink)}
+a{color:var(--blue)}a:hover{color:var(--ink)}

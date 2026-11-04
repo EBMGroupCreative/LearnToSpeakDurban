@@ -1,0 +1,134 @@
+function Hero({ go, preview }) {
+  const L = window.LSD2.lessons;
+  const [t] = React.useState(() => L[Math.floor(Math.random() * L.length)]);
+  const [copied, copy] = useCopy();
+  const [isIn] = useStored('lsd2-enrolled', false);
+  const enrolled = isIn && !preview;
+  // The signature: on first load the hero highlight draws on, then the handles pop. Once per visit.
+  const [draw] = React.useState(() => { if (window.__ltHeroDrawn) return false; window.__ltHeroDrawn = true; return true; });
+  const pick = a => { if (a === 'Copy' || a === 'Copied') copy('Learn to speak Durban.'); else if (a === 'Translate') go('ekselator'); else go('lessons/durban'); };
+  return (
+    <section className="hero">
+      <div className="hero-l">
+        <h1 className="hl hero-h"><span>Lear<span className="kn">n</span> to</span><span>sp<span className="kn">e</span><span className="kn">a</span>k</span><Sel className={draw ? 'draw' : ''}>Dur<span className="kn">b</span>an.<Pop items={[copied ? 'Copied' : 'Copy', 'Translate', 'Look Up']} active={1} onPick={pick} place="below" /></Sel></h1>
+        <a className="hero-by" href="https://gatewayworld.co.za/" target="_blank" rel="noopener" aria-label="A public service by Gateway"><span className="lbl">A public service by</span><img src={LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png')} alt="Gateway" /></a>
+      </div>
+      <div className="hero-r">
+        {!enrolled ? <><EnrolCard />
+        <div className="hero-after">
+          <p className="lead">Durban runs on its own language and one ocean. We can teach you the language. The ocean you’ll have to come fetch.</p>
+          <div className="lbl muted">Course fee: free. Fluency: guaranteed-ish.</div>
+        </div></> : <>
+        <div className="lbl muted" style={{ marginBottom: 14 }}>You’re enrolled. A random lesson · no homework</div>
+        <LookUp l={t} size="lg" className="lt-deal" style={{ transform: 'rotate(1.5deg)' }}>
+          <a className="btn soft sm" href={'#lessons/' + t.n} style={{ marginTop: 24 }}>{'Begin Lesson ' + t.n}</a>
+        </LookUp>
+        <div className="hero-after">
+          <p className="lead">Durban runs on its own language and one ocean. We can teach you the language. The ocean you’ll have to come fetch.</p>
+          <div className="lbl muted">Course fee: free. Fluency: guaranteed-ish.</div>
+          <div className="row"><a className="btn primary" href="#lessons/01">[ Begin Lesson 1 ]</a><a className="btn line" href="#exam">Skip to the exam (brave)</a></div>
+        </div></>}
+      </div>
+    </section>
+  );
+}
+
+const toEnrol = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => { const el = document.querySelector('.enrol-card input'); if (el) el.focus({ preventScroll: true }); }, 450); };
+
+function WordWall({ locked }) {
+  const L = [...window.LSD2.lessons, ...(window.LSD2.bonus || [])];
+  const [h, setH] = React.useState(todayIndex());
+  return (
+    <section className="sec">
+      <div className="sec-head">
+        <span className="lbl">{'The syllabus · ' + L.length + ' words · no prerequisites'}</span>
+        <h2 className="hl h2">{locked ? <>{'In stock: ' + L.length + ' '}<Sel>words.</Sel></> : 'Select any word.'}</h2>
+        <p className="lead" style={{ margin: 0 }}>{locked ? 'All ' + L.length + ' are in stock. Hover them for free. Learning them costs one email address.' : 'Hover. Click. Become slightly more Durban. Side effects include saying “shot” to bank tellers.'}</p>
+      </div>
+      <div className="wall hl">
+        {L.map((l, i) => {
+          const inner = <Sel on={h === i} className={h === i ? 'draw xs' : ''}>{l.w}{h === i && <Pop items={locked ? [(l.n[0] === 'B' ? 'Bonus ' : 'Lesson ') + l.n, 'Enrol to unlock'] : ['Look Up · ' + l.n]} active={locked ? 1 : 0} />}</Sel>;
+          return <React.Fragment key={l.n}>
+            {locked
+              ? <span className={'ww' + (h === i ? ' on' : '')} onMouseEnter={() => setH(i)}>{inner}</span>
+              : <a href={'#lessons/' + l.n} className={h === i ? 'on' : ''} onMouseEnter={() => setH(i)} onFocus={() => setH(i)}>{inner}</a>}
+            {i < L.length - 1 ? ' ' : ''}
+          </React.Fragment>;
+        })}
+      </div>
+    </section>
+  );
+}
+
+const HOME_TILES = [
+  ['card', 'Student card', 'Proof of enrolment. One selfie and you’re official. Qualification pending. Citizenship pending slops.', 'Get carded'],
+  ['lessons/01', 'Lessons', 'All 50, one at a time. Mark them learnt. Nobody checks. Gateway checks.', 'Begin Lesson 1'],
+  ['dictionary', 'The Dictionary', 'All 50 words, filed by an intern who has since gone surfing.', 'Open the Dictionary'],
+  ['activities', 'Games', 'Eleven games, one live Class Rankings. Joburg is currently winning. Fix that.', 'Play something'],
+  ['flashcards', 'Flashcards', 'Guess, flip, file it as known. Lying to a flashcard is a vaalie move.', 'Start flipping'],
+  ['ekselator', 'The Ekselator', 'Paste in anything inland. It comes back coastal. Your manager will smaak it, one time.', 'Make it coastal'],
+  ['study', 'Study pack', 'Download the course before take-off — or learn it landmark by landmark down the N3. Study at 10,000 metres or 120km/h (passenger seat only).', 'Pack the course'],
+  ['submit', 'Submit a word', 'Heard one at the taxi rank that we don’t know? Report it. The intern will investigate when the surf drops.', 'File a word'],
+  ['kit/quiz', 'How Durban are you?', 'Eight questions. One shareable result. Your bru will get 12%. We’ve run the numbers.', 'Take the quiz'],
+  ['kit', 'The ducking-out kit', 'A postcard to gloat with, an auto-reply to hide behind, and a packing list one item long: baggies.', 'Duck out'],
+  ['exam', 'The final exam', 'All 50 words. One sitting. Pass, and the certificate prints itself. Fail, and you repeat Dezemba in Joburg.', 'Sit the exam'],
+  ['playlist', 'Road trip playlist', 'Gqom and yano for the N3. Six hours of it. By Harrismith you’ll stop asking “are we there yet.” Free, even for the unenrolled.', 'Open the playlist'],
+];
+const REDACT = { card: ['Qualification pending'], 'lessons/01': ['Gateway checks'], dictionary: ['who has since gone surfing'], activities: ['Joburg is currently winning'], flashcards: ['a vaalie move'], ekselator: ['one time'], study: ['passenger seat only'], submit: ['at the taxi rank'], 'kit/quiz': ['12%'], kit: ['baggies'], exam: ['start packing', 'repeat Dezemba in Joburg'] };
+const redact = (p, words = []) => { const w = words.filter(x => p.includes(x)); if (!w.length) return p; const re = new RegExp('(' + w.map(x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')'); return p.split(re).map((s, i) => w.includes(s) ? <span key={i} className="rd" title="Redacted. Dave.">{s}</span> : s); };
+const HOME_PLAYLIST_URL = 'https://open.spotify.com/playlist/4lbjRGukzSVUvbZq91tbI6';
+const HOME_APPLE_URL = 'https://music.apple.com/za/playlist/learn-to-speak-durban/pl.u-AkAmPlyUlVNPMX5';
+const EXAM_TILE_LOCKED = 'All 50 words. One sitting. Unlocks 1 Dezemba — the moment you’re allowed to stop studying and start packing.';
+
+function HomeScreen({ go, preview }) {
+  const [enrolled] = useStored('lsd2-enrolled', false);
+  const locked = !enrolled || !!preview;
+  const examOpen = lsdNow() >= window.EXAM_UNLOCK;
+  return (
+    <div>
+      <Hero go={go} preview={preview} />
+      <section className="sec today-sec"><TodayStrip /></section>
+      <WordWall locked={locked} />
+      <section className="sec">
+        <div className="sec-head">
+          <span className="lbl">{locked ? 'Course contents · 12 files · currently locked' : 'Course contents · 12 files · unlocked'}</span>
+          <h2 className="hl h2">{locked ? <>Everything else is <Sel>locked.</Sel></> : <>Everything is <Sel>open.</Sel></>}</h2>
+          <p className="lead" style={{ margin: 0 }}>{locked ? 'Twelve files. One form. Course fee: free. Contents partially redacted by Gateway’s legal team (one guy, Dave).' : 'You enrolled. No prerequisites, no homework, no invigilator. He’s at the beach.'}</p>
+        </div>
+        <div className="tiles">
+          {HOME_TILES.map(([id, t, p, c], i) => { if (id === 'exam' && !examOpen) p = EXAM_TILE_LOCKED; return id === 'playlist' ? (
+            <div key={id} className="card tile">
+              <span className="lbl blue">{pad2(i + 1)}</span>
+              <h3 className="hl">{t}</h3>
+              <p>{p}</p>
+              <div className="row" style={{ gap: 8, alignSelf: 'end' }}><a className="btn line sm" href={HOME_PLAYLIST_URL} target="_blank" rel="noopener">Spotify</a><a className="btn line sm" href={HOME_APPLE_URL} target="_blank" rel="noopener">Apple Music</a></div>
+            </div>
+          ) : locked ? (
+            <button key={id} type="button" className="card tile locked" onClick={toEnrol}>
+              <div className="between"><span className="lbl blue">{pad2(i + 1)}</span><span className="pill lbl">Locked</span></div>
+              <h3 className="hl">{t}</h3>
+              <p>{redact(p, REDACT[id])}</p>
+              <span className="btn soft sm" style={{ alignSelf: 'flex-start' }}>Enrol to unlock</span>
+            </button>
+          ) : id === 'exam' && !examOpen ? (
+            <div key={id} className="card tile">
+              <span className="lbl blue">{pad2(i + 1)}</span>
+              <h3 className="hl">{t}</h3>
+              <div className="tile-b"><p>{p}</p><span className="lbl muted">NO EARLY SITTINGS. THE OCEAN IS OPEN 24/7. THE EXAM HAS OFFICE HOURS. VERY JOBURG OF IT.</span></div>
+              <button type="button" className="btn line sm" disabled style={{ alignSelf: 'flex-start', background: 'transparent', color: 'var(--ink)' }}>[ Locked · opens 1 Dezemba ]</button>
+            </div>
+          ) : (
+            <a key={id} href={'#' + id} className="card tile">
+              <span className="lbl blue">{pad2(i + 1)}</span>
+              <h3 className="hl">{t}</h3>
+              <p>{p}</p>
+              <span className="btn line sm" style={{ alignSelf: 'flex-start' }}>{c}</span>
+            </a>
+          ); })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+Object.assign(window, { HomeScreen });

@@ -1,0 +1,176 @@
+// Decorate your exile: profile covers, meeting backgrounds, phone and desktop wallpapers (type only, drawn to canvas),
+// plus the email signature, Dezemba.ics and the office printables (#study/office). Loads after DownloadsHub.jsx (uses DL, dlMono, dlFonts, dlSave).
+function exCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.fillStyle = DL.paper; x.fillRect(0, 0, w, h); x.textBaseline = 'alphabetic'; return [c, x]; }
+function exFont(x, sz, wt = 800) { x.font = `${wt} ${sz}px ${DL_G}`; x.letterSpacing = Math.round(-sz * 0.04) + 'px'; }
+function exSelBox(x, X, T, W, H, sz) {
+  x.fillStyle = DL.hl; x.fillRect(X, T, W, H);
+  const hw = Math.max(3, sz * 0.026), k = sz * 0.075; x.fillStyle = DL.blue;
+  x.fillRect(X - hw / 2, T, hw, H); x.fillRect(X + W - hw / 2, T, hw, H);
+  x.beginPath(); x.arc(X, T - k * 0.6, k, 0, 7); x.fill(); x.beginPath(); x.arc(X + W, T + H + k * 0.6, k, 0, 7); x.fill();
+}
+// lines: strings, or arrays of [text, selected]
+function exRich(x, lines, X, Y, sz, align = 'left', lh = 1.02) {
+  exFont(x, sz);
+  lines.forEach((ln, i) => {
+    const segs = typeof ln === 'string' ? [[ln, 0]] : ln, by = Y + i * sz * lh;
+    const tw = segs.reduce((s, [t]) => s + x.measureText(t).width, 0);
+    let cx = align === 'right' ? X - tw : align === 'center' ? X - tw / 2 : X;
+    segs.forEach(([t, sel]) => { const w = x.measureText(t).width; if (sel) { const lead = x.measureText(t.match(/^\s*/)[0]).width, ww = x.measureText(t.trim()).width; exSelBox(x, cx + lead - sz * 0.04, by - sz * 0.8, ww + sz * 0.08, sz * 0.98, sz); } cx += w; });
+    cx = align === 'right' ? X - tw : align === 'center' ? X - tw / 2 : X;
+    x.fillStyle = DL.ink; segs.forEach(([t]) => { x.fillText(t, cx, by); cx += x.measureText(t).width; });
+  });
+  x.letterSpacing = '0px';
+}
+function exSign(x, logo, R, B, s, short) {
+  const lh = s * 6.2, lw = logo ? logo.width / logo.height * lh : 0;
+  if (logo) x.drawImage(logo, R - lw, B - lh, lw, lh);
+  const tx = R - lw - (logo ? s * 1.6 : 0);
+  if (!short) dlMono(x, 'Learn to Speak Durban.', tx, B - s * 3.1, s, DL.ink, 'right');
+  dlMono(x, short ? 'Learn to Speak Durban.' : 'A public service by Gateway.', tx, B - s * 1.75, s, DL.ink, 'right');
+  x.font = `500 ${s}px ${DL_M}`; x.fillStyle = DL.blue; x.textAlign = 'right'; x.fillText('learntospeakdurban.com', tx, B - s * 0.15); x.textAlign = 'left';
+}
+function exWall(x, w, h, sz, col) {
+  exFont(x, sz); x.fillStyle = col; const ws = window.LSD2.lessons.map(l => l.w), gap = sz * 0.4;
+  let cx = -sz * 0.08, cy = sz * 0.82, i = 0;
+  while (cy < h + sz) { const t = ws[i % ws.length], tw = x.measureText(t).width; if (cx > 0 && cx + tw > w) { cx = -sz * 0.08; cy += sz * 1.04; } x.fillText(t, cx, cy); cx += tw + gap; i++; }
+  x.letterSpacing = '0px';
+}
+function exCard(x, X, Y, W, H, r) { x.save(); x.shadowColor = 'rgba(0,0,0,.14)'; x.shadowBlur = r * 1.6; x.shadowOffsetY = r * 0.5; x.fillStyle = '#fff'; x.beginPath(); x.roundRect(X, Y, W, H, r); x.fill(); x.restore(); }
+
+const EX_GROUPS = [['covers', 'Profile covers', 'X 1500 × 500 · Facebook 820 × 312'], ['meet', 'Meeting backgrounds', 'Teams / Zoom · 1920 × 1080 · centre left clear for you'], ['lock', 'Lock screens', '1170 × 2532 · clock stays clear'], ['home', 'Home screens', '1170 × 2532 · one word, above the dock'], ['desk', 'Desktop', '2560 × 1440 and 1920 × 1080']];
+const exCover = (fl, w, h, k) => (x, lg) => {
+  if (fl) { exRich(x, [[['Fluent-ish.', 1]]], w * 0.05, h * 0.58, Math.round(h * 0.44)); exSign(x, lg, w - w * 0.035, h - h * 0.08, Math.round(16 * k)); return; }
+  exWall(x, w, h, Math.round(h * 0.17), '#d7d7d3');
+  const cw = w * 0.38, ch = h * 0.5, cx = w - w * 0.035 - cw, cy = h - h * 0.1 - ch, s = Math.round(14 * k);
+  exCard(x, cx, cy, cw, ch, 22 * k);
+  exRich(x, [[['Learn to speak ', 0], ['Durban.', 1]]], cx + cw * 0.07, cy + ch * 0.36, Math.round(Math.min(ch * 0.2, cw * 0.085)));
+  exSign(x, lg, cx + cw - cw * 0.06, cy + ch - ch * 0.12, s);
+};
+const exMeet = (lines, sub) => (x, lg) => {
+  dlMono(x, 'Learn to Speak Durban', 72, 96, 22, DL.ink);
+  exRich(x, lines, 72, 210, 78);
+  if (sub) dlMono(x, sub, 72, 210 + lines.length * 80 + 10, 22, DL.ink);
+  exSign(x, lg, 1848, 1024, 20);
+};
+const exLock = (lines, sub) => (x, lg) => {
+  exRich(x, lines, 90, 1040, 112);
+  if (sub) dlMono(x, sub, 90, 1040 + lines.length * 114 + 20, 30, DL.ink);
+  exSign(x, lg, 1080, 2532 - 200, 26, true);
+};
+const exHome = w => x => exRich(x, [[[w, 1]]], 585, 2532 - 330, 72, 'center');
+const exDesk = (clean, w, h) => (x) => {
+  const k = w / 2560;
+  if (!clean) { exWall(x, w, h, Math.round(150 * k), 'rgba(17,17,17,.07)'); dlMono(x, 'Learn to Speak Durban · all 50', w - 90 * k, h - 70 * k, Math.round(26 * k), DL.muted, 'right'); return; }
+  exRich(x, [[['Park', 1], [' (v.) — to chill.', 0]]], w - 120 * k, h - 200 * k, Math.round(96 * k), 'right');
+  x.font = `500 ${Math.round(48 * k)}px ${DL_G}`; x.fillStyle = DL.ink; x.textAlign = 'right'; x.fillText('You’re getting there.', w - 120 * k, h - 110 * k); x.textAlign = 'left';
+};
+const EXILE = [
+  { g: 'covers', id: 'x-wall', name: 'X · word wall', w: 1500, h: 500, draw: exCover(0, 1500, 500, 1.6) },
+  { g: 'covers', id: 'x-fluent', name: 'X · Fluent-ish', w: 1500, h: 500, draw: exCover(1, 1500, 500, 1.6) },
+  { g: 'covers', id: 'fb-wall', name: 'Facebook · word wall', w: 820, h: 312, draw: exCover(0, 820, 312, 0.95) },
+  { g: 'covers', id: 'fb-fluent', name: 'Facebook · Fluent-ish', w: 820, h: 312, draw: exCover(1, 820, 312, 0.95) },
+  { g: 'meet', id: 'meet-aweh', name: 'Could have been an aweh', w: 1920, h: 1080, draw: exMeet(['This meeting', 'could have been', [['an ', 0], ['aweh.', 1]]]) },
+  { g: 'meet', id: 'meet-coast', name: 'Emotionally at the coast', w: 1920, h: 1080, draw: exMeet(['Physically here.', 'Emotionally at', [['the ', 0], ['coast.', 1]]], '— Lesson 17') },
+  { g: 'meet', id: 'meet-parked', name: 'Currently: parked', w: 1920, h: 1080, draw: exMeet([[['Currently: ', 0], ['parked.', 1]], 'Proceed', 'accordingly.']) },
+  { g: 'lock', id: 'lock-braai', name: 'Just the braai', w: 1170, h: 2532, draw: exLock(['There is no time.', 'There’s just', [['the ', 0], ['braai.', 1]]]) },
+  { g: 'lock', id: 'lock-28', name: 'Days to Dezemba', w: 1170, h: 2532, draw: exLock([[['28', 1], [' days to', 0]], 'Dezemba. The', 'syllabus is', 'waiting.']) },
+  { g: 'lock', id: 'lock-check', name: 'Check the time', w: 1170, h: 2532, draw: exLock(['Check the time.', 'Now check the', 'sea temperature.', [['We’ll ', 0], ['wait.', 1]]], '— Lesson 40') },
+  { g: 'home', id: 'home-aweh', name: 'aweh.', w: 1170, h: 2532, draw: exHome('aweh.') },
+  { g: 'home', id: 'home-fluent', name: 'fluent-ish.', w: 1170, h: 2532, draw: exHome('fluent-ish.') },
+  { g: 'desk', id: 'desk-wall-2560', name: 'Word wall · 2560', w: 2560, h: 1440, draw: exDesk(0, 2560, 1440) },
+  { g: 'desk', id: 'desk-clean-2560', name: 'Park · 2560', w: 2560, h: 1440, draw: exDesk(1, 2560, 1440) },
+  { g: 'desk', id: 'desk-wall-1920', name: 'Word wall · 1920', w: 1920, h: 1080, draw: exDesk(0, 1920, 1080) },
+  { g: 'desk', id: 'desk-clean-1920', name: 'Park · 1920', w: 1920, h: 1080, draw: exDesk(1, 1920, 1080) },
+];
+const exRender = (e, logo) => { const [c, x] = exCanvas(e.w, e.h); e.draw(x, logo); return c; };
+
+// Dezemba.ics: all day 15 Dec – 5 Jan (DTEND is exclusive), yearly. Reminder at 03:01 on day one (031).
+const EX_ICS = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gateway//Learn to Speak Durban//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT', 'UID:dezemba-vy@learntospeakdurban.com', 'DTSTAMP:20261102T000000Z', 'DTSTART;VALUE=DATE:20261215', 'DTEND;VALUE=DATE:20270106', 'RRULE:FREQ=YEARLY', 'SUMMARY:Vy.', 'DESCRIPTION:Dezemba. Lesson 28: Vy (v.) — to leave. learntospeakdurban.com', 'TRANSP:OPAQUE', 'BEGIN:VALARM', 'TRIGGER;RELATED=START:PT3H1M', 'ACTION:DISPLAY', 'DESCRIPTION:wake up, you’re in Durban', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR', ''].join('\r\n');
+
+function ExileKit() {
+  const [logo, setLogo] = React.useState(null);
+  const [th, setTh] = React.useState(null);
+  const [note, setNote] = React.useState(null);
+  const [name] = useStored('lsd2-name', '');
+  const [cardNo] = useStored('lsd2-cardno', null);
+  React.useEffect(() => {
+    let live = true; const im = new Image();
+    const go = ok => dlFonts().then(() => { if (!live) return; const lg = ok ? im : null; setLogo(lg); const t = {}; EXILE.forEach(e => { const c = exRender(e, lg), s = document.createElement('canvas'), sc = Math.min(420 / e.w, 420 / e.h); s.width = Math.round(e.w * sc); s.height = Math.round(e.h * sc); s.getContext('2d').drawImage(c, 0, 0, s.width, s.height); t[e.id] = s.toDataURL('image/jpeg', 0.86); }); setTh(t); });
+    im.onload = () => go(true); im.onerror = () => go(false); im.src = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png');
+    return () => { live = false; };
+  }, []);
+  const save = e => dlSave(exRender(e, logo), 'ltsd-' + e.id + '-' + e.w + 'x' + e.h + '.png');
+  const saveAll = async g => { for (const e of EXILE.filter(x => x.g === g)) { await save(e); await dlGap(); } setNote('All of them. Decorate responsibly.'); };
+  const sig = ['— ' + ((safeText(name) || '').trim() || '[Name]') + '.', 'Student #' + (cardNo ? String(cardNo).slice(-5) : '04412') + ', Learn to Speak Durban.', 'Fluency: pending.', 'Vy date: 15 Dezemba.'];
+  const copySig = () => { try { navigator.clipboard && navigator.clipboard.writeText(sig.join('\n')); } catch (e) {} setNote('Signature copied. Paste it under every email until January.'); };
+  const ics = () => { dlSaveBlob(new Blob([EX_ICS], { type: 'text/calendar' }), 'Dezemba.ics'); setNote('Dezemba.ics downloaded. Open it. Your calendar will understand.'); };
+  return (
+    <div className="exile">
+      <div className="exile-h">
+        <span className="lbl blue">Decorate your exile</span>
+        <div className="hl" style={{ fontSize: 'clamp(32px, 3vw, 48px)' }}>Decorate your <Sel>exile.</Sel></div>
+        <p className="lead" style={{ margin: 0 }}>Covers, backgrounds and wallpapers for the last weeks inland. Type only. Tap one to download it.</p>
+        {note && <div key={note} className="lbl blue lt-note">{note}</div>}
+      </div>
+      {EX_GROUPS.map(([g, label, d]) => (
+        <div key={g} className="card pack-c ex-g">
+          <div className="between lbl" style={{ flexWrap: 'wrap' }}><span className="blue">{label}</span><span className="muted">{d}</span></div>
+          <div className={'ex-thumbs ' + g}>{EXILE.filter(e => e.g === g).map(e => <button key={e.id} type="button" className="ex-one" title="Download this one" onClick={() => save(e)}>{th ? <img src={th[e.id]} alt={label + ': ' + e.name + ', download'} style={{ aspectRatio: e.w + '/' + e.h }} /> : <span style={{ aspectRatio: e.w + '/' + e.h }}></span>}<span className="lbl muted">{e.name}</span></button>)}</div>
+          <div className="row" style={{ justifyContent: 'flex-end', marginTop: 'auto' }}><button type="button" className="btn soft sm" onClick={() => saveAll(g)}>Download all</button></div>
+        </div>
+      ))}
+      <div className="packs">
+        <div className="card pack-c">
+          <div className="between lbl"><span className="blue">Email signature</span><span className="muted">Copy and paste</span></div>
+          <div className="ex-sig">{sig.map((l, i) => <div key={i}>{i === 3 ? <>Vy date: <Sel handles={false}>15 Dezemba.</Sel></> : l}</div>)}</div>
+          <div className="row" style={{ marginTop: 'auto' }}><button type="button" className="btn soft sm" onClick={copySig}>[ Copy signature ]</button></div>
+        </div>
+        <div className="card pack-c">
+          <div className="between lbl"><span className="blue">Dezemba.ics</span><span className="muted">Calendar file</span></div>
+          <div className="hl" style={{ fontSize: 34 }}><Sel>Vy.</Sel></div>
+          <p>All day, 15 Dezemba to 5 January. Repeats annually. One week before, a reminder: “Start acting normal.”</p>
+          <div className="row" style={{ marginTop: 'auto' }}><button type="button" className="btn soft sm" onClick={ics}>Add to calendar</button></div>
+        </div>
+        <div className="card pack-c">
+          <div className="between lbl"><span className="blue">Office printables</span><span className="muted">A4 · print at home</span></div>
+          <div className="hl" style={{ fontSize: 34 }}>For the office.</div>
+          <p>A tear-off countdown for the kitchen, a door sign, and a desk flag for your notice period. Print. Stick. Leave.</p>
+          <div className="row" style={{ marginTop: 'auto' }}><a className="btn soft sm" href="#study/office">Print the set</a></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Office printables (#study/office): three A4 pages, one per printed page ----
+function OfficeSheets() {
+  const now = new Date(), y = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+  const days = Math.max(0, Math.ceil((new Date(y, 11, 1) - now) / 864e5));
+  const tabs = Array.from({ length: 10 }, (_, i) => Math.max(0, days - i));
+  const foot = <div className="a4-foot"><span className="lbl">Learn to Speak Durban. A public service by Gateway.</span><span className="lbl blue">learntospeakdurban.com</span></div>;
+  return (
+    <div className="sheet-wrap">
+      <SheetBar title="Office printables" note="3 pages, one per sheet" />
+      <div className="a4 of-page">
+        <div className="between lbl"><span className="blue">Office kitchen · tear one off daily</span><span className="muted">Lesson 28</span></div>
+        <div className="hl of-big">{days}</div>
+        <div className="hl of-h">Days until <Sel>Dezemba.</Sel></div>
+        {foot}
+        <div className="of-tabs">{tabs.map((n, i) => <div key={i}><b className="hl">{n}</b><span className="lbl muted">Tear one off</span></div>)}</div>
+      </div>
+      <div className="a4 of-page">
+        <div className="between lbl"><span className="blue">Door sign</span><span className="muted">Hang at eye level</span></div>
+        <div className="of-mid"><div className="hl of-h xl">Gone to <Sel>chow.</Sel></div><div className="hl of-h">Back shap shap.</div></div>
+        {foot}
+      </div>
+      <div className="a4 of-page of-flag">
+        <div className="of-half flip"><div className="hl of-h">This desk is in its <Sel>notice period.</Sel></div></div>
+        <div className="of-fold"><span className="lbl muted">Fold here</span></div>
+        <div className="of-half"><div className="hl of-h">This desk is in its <Sel>notice period.</Sel></div></div>
+        {foot}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { ExileKit, OfficeSheets });

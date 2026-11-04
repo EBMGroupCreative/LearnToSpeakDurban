@@ -1,0 +1,110 @@
+// AUNTIES AGAINST EVERYONE (game-15). You + three computer students, one auntie judging. Cards: window.NOLAKA (nolaka-cards.js), unchanged.
+// For honour only: no marks, nothing sent to the Class Rankings. Session record lives in sessionStorage (lsd2-aae-rec).
+// The auntie picks the player about 35% of the time (vs 25% fair), so it feels winnable.
+const AAE_SEATS = ['sandton_sipho', 'umhlanga_auntie', 'vusi.kook', 'fourways_fiona', 'midrand_mpho', 'benoni_bheki', 'rosebank_rae', 'centurion_charl', 'bryanston_bongi', 'randburg_riaan'];
+const AAE_WIN = ['The auntie has chosen. She will not be explaining.', 'She laughed. She’s pretending she didn’t. Point awarded.', 'Wrong answers were available and you still chose that one.', 'She’s already told the family group. Point awarded.', 'The auntie nodded once. In this family, that’s a standing ovation.'];
+const AAE_TO = 4, AAE_HAND = 7, AAE_FAVOUR = 0.35;
+const aaeShuf = a => { const o = [...a]; for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; } return o; };
+const aaeRec = () => { try { return JSON.parse(sessionStorage.getItem('lsd2-aae-rec')) || { w: 0, l: 0 }; } catch (e) { return { w: 0, l: 0 }; } };
+const aaePrint = () => { location.hash = 'study/aunties/print'; window.scrollTo(0, 0); };
+function aaeDeal() {
+  const C = window.NOLAKA || { prompts: [], answers: [] };
+  const A = aaeShuf(C.answers), P = aaeShuf(C.prompts);
+  return { bots: aaeShuf(AAE_SEATS).slice(0, 3), scores: [0, 0, 0, 0], A, P, hand: A.splice(0, AAE_HAND), prompt: P.pop(), round: 1, phase: 'pick', plays: [], win: null, line: '' };
+}
+// The prompt with the winning answer dropped into the blank.
+const aaeFill = (p, a) => { const parts = p.split('____'), ans = a.replace(/[.!]$/, ''); return parts.map((x, i) => i < parts.length - 1 ? <React.Fragment key={i}>{x}<Sel handles={false}>{ans}</Sel></React.Fragment> : <React.Fragment key={i}>{x}</React.Fragment>); };
+const aaeBlank = p => p.split('____').map((x, i, arr) => i < arr.length - 1 ? <React.Fragment key={i}>{x}<span className="nl-blank"></span></React.Fragment> : <React.Fragment key={i}>{x}</React.Fragment>);
+
+function AuntiesGame() {
+  const [g, setG] = React.useState(null);
+  const [rec, setRec] = React.useState(aaeRec);
+  const winN = React.useRef(Math.floor(Math.random() * AAE_WIN.length));
+  const name = (gg, who) => who === 0 ? 'You' : gg.bots[who - 1];
+  const play = card => setG(s => {
+    if (!s || s.phase !== 'pick') return s;
+    const A = [...s.A], bc = A.splice(0, 3), hand = s.hand.filter(c => c !== card);
+    if (A.length) hand.push(A.shift());
+    return { ...s, A, hand, phase: 'flip', plays: aaeShuf([{ who: 0, t: card }, ...bc.map((t, i) => ({ who: i + 1, t }))]) };
+  });
+  React.useEffect(() => {
+    if (!g) return;
+    if (g.phase === 'flip') { const t = setTimeout(() => setG(s => ({ ...s, phase: 'judge' })), 1500); return () => clearTimeout(t); }
+    if (g.phase === 'judge') { const t = setTimeout(() => setG(s => {
+      const who = Math.random() < AAE_FAVOUR ? 0 : 1 + Math.floor(Math.random() * 3), scores = s.scores.map((n, i) => i === who ? n + 1 : n);
+      const line = who === 0 ? AAE_WIN[winN.current++ % AAE_WIN.length] : 'The auntie chose ' + s.bots[who - 1] + '’s card. There is no appeals process.';
+      return { ...s, phase: 'verdict', win: who, scores, line, lastWin: { prompt: s.prompt, card: (s.plays.find(p => p.who === who) || {}).t, mine: who === 0 }, myWin: who === 0 ? { prompt: s.prompt, card: (s.plays.find(p => p.who === 0) || {}).t, mine: true } : s.myWin };
+    }), 1700); return () => clearTimeout(t); }
+  }, [g && g.phase]);
+  const next = () => {
+    const done = g.scores.some(n => n >= AAE_TO);
+    if (done) { const won = g.scores[0] >= AAE_TO, r = { w: rec.w + (won ? 1 : 0), l: rec.l + (won ? 0 : 1) }; setRec(r); try { sessionStorage.setItem('lsd2-aae-rec', JSON.stringify(r)); } catch (e) {} setG({ ...g, phase: 'over' }); return; }
+    const P = [...g.P], prompt = P.pop() || aaeShuf((window.NOLAKA || { prompts: [''] }).prompts)[0];
+    setG({ ...g, P, prompt, round: g.round + 1, phase: 'pick', plays: [], win: null, line: '' });
+  };
+
+  if (!g) return (
+    <div className="gm-center">
+      <span className="lbl blue">Aunties Against Everyone · for honour only</span>
+      <div className="hl" style={{ fontSize: 'clamp(44px, 6vw, 88px)' }}>Fill the <Sel>gap.</Sel></div>
+      <p className="lead" style={{ textAlign: 'center', margin: 0, maxWidth: 600 }}>Fill the gap. Worst answer wins. The auntie decides and the auntie is not consistent. First to four rounds. No marks, no prizes — just honour and shame.</p>
+      <div className="row" style={{ justifyContent: 'center' }}>
+        <button type="button" className="btn primary" onClick={() => setG(aaeDeal())}>[ Deal me in ]</button>
+        <button type="button" className="btn line" onClick={aaePrint}>Print the deck</button>
+      </div>
+      <ChallengeBtn id="game-15" />
+      <span className="lbl muted">Three students are already at the table. None of them are from here.</span>
+    </div>
+  );
+
+  const seats = <div className="aae-seats">{[0, 1, 2, 3].map(i => <div key={i} className={'aae-seat' + (i === 0 ? ' you' : '') + (g.win === i && g.phase === 'verdict' ? ' won' : '')}><span className="aae-name">{name(g, i)}</span><span className="aae-pips" aria-label={g.scores[i] + ' of ' + AAE_TO}>{[0, 1, 2, 3].map(k => <i key={k} className={k < g.scores[i] ? 'on' : ''}></i>)}</span></div>)}</div>;
+
+  if (g.phase === 'over') {
+    const won = g.scores[0] >= AAE_TO, champ = g.scores.findIndex(n => n >= AAE_TO), shareCard = g.myWin || g.lastWin;
+    return (
+      <div className="gm-center">
+        <span className="lbl blue">{'Game over · ' + g.round + ' rounds · first to ' + AAE_TO}</span>
+        <div className="hl aae-over-h" style={{ fontSize: 'clamp(44px, 7vw, 110px)' }}>{won ? <>The auntie <Sel>approves.</Sel></> : <><Sel>{g.bots[champ - 1]}</Sel> takes it.</>}</div>
+        <p className="lead" style={{ margin: 0, textAlign: 'center' }}>{won ? 'Honour: restored. Shame: redistributed to the other three.' : 'Shame: yours. Honour: also not yours. The auntie is already serving seconds to the winner.'}</p>
+        {seats}
+        <div className="aae-rec"><span className="lbl muted">Your record against the aunties · this session</span><div className="hl" style={{ fontSize: 'clamp(40px, 5vw, 64px)', fontVariantNumeric: 'tabular-nums' }}>{rec.w + ' won · ' + rec.l + ' lost'}</div><span className="lbl blue">The auntie remembers. Unfortunately.</span></div>
+        {shareCard && shareCard.card && <ShareRow id="game-15" r={{ ...shareCard, kicker: g.myWin ? 'The winning card' : 'Her choice. Not mine.' }} />}
+        <div className="row" style={{ justifyContent: 'center' }}>
+          <button type="button" className="btn primary" onClick={() => setG(aaeDeal())}>[ Rematch ]</button>
+          <button type="button" className="btn line" onClick={aaePrint}>Print the deck</button>
+        </div>
+      </div>
+    );
+  }
+
+  const up = g.phase !== 'pick', verdict = g.phase === 'verdict', wp = verdict ? g.plays.find(p => p.who === g.win) : null, last = verdict && g.scores.some(n => n >= AAE_TO);
+  const status = g.phase === 'pick' ? 'Pick your worst. The auntie is waiting.' : g.phase === 'flip' ? 'Cards on the table.' : g.phase === 'judge' ? 'The auntie is reading them out. Dramatically.' : g.line;
+  return (
+    <div className="aae">
+      <div className="between lbl"><span className="blue">{'Round ' + g.round + ' · first to ' + AAE_TO}</span><span className="muted">For honour only · no marks</span></div>
+      {seats}
+      <div className="aae-board">
+        <div key={g.prompt} className="aae-card p on-blue lt-deal"><span className="lbl">Prompt</span><div className="aae-t">{wp ? aaeFill(g.prompt, wp.t) : aaeBlank(g.prompt)}</div><span className="lbl aae-foot">Aunties Against Everyone</span></div>
+        <div className="aae-plays">{(up ? g.plays : [0, 1, 2, 3]).map((p, i) => (
+          <div key={i} className={'aae-f' + (up ? ' up' : '') + (verdict && p.who === g.win ? ' win' : '') + (verdict && p.who !== g.win ? ' lose' : '')}>
+            <div className="aae-in" style={{ transitionDelay: (i * 0.18) + 's' }}>
+              <div className="aae-card back"><span className="lbl">Aunties Against Everyone</span><span className="hl">Aunties.</span></div>
+              <div className="aae-card a front"><div className="aae-t">{up ? p.t : ''}</div>{verdict && <span className={'lbl ' + (p.who === g.win ? 'blue' : 'muted')}>{name(g, p.who)}</span>}</div>
+            </div>
+          </div>
+        ))}</div>
+      </div>
+      <div className="aae-status" role="status">
+        <div key={g.phase + g.round} className={'hl ' + (verdict ? 'aae-stamp' : 'lt-in')} style={{ fontSize: 'clamp(22px, 2.4vw, 32px)' }}>{status}</div>
+        {verdict && <button type="button" className="btn primary" onClick={next}>{last ? '[ See the final verdict ]' : '[ Next round ]'}</button>}
+      </div>
+      <div className="aae-hand-wrap">
+        <span className="lbl muted">{g.phase === 'pick' ? 'Your hand · tap a card to play it' : 'Your hand · wait for the auntie'}</span>
+        <div className={'aae-hand' + (g.phase === 'pick' ? '' : ' off')}>{g.hand.map(c => <button key={c} type="button" className="aae-card a" disabled={g.phase !== 'pick'} onClick={() => play(c)}><span className="aae-t">{c}</span></button>)}</div>
+      </div>
+      <div className="row"><button type="button" className="btn line sm" onClick={aaePrint}>Print the deck</button><button type="button" className="btn line sm" onClick={() => setG(null)}>Leave the table</button></div>
+    </div>
+  );
+}
+
+Object.assign(window, { AuntiesGame });

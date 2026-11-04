@@ -1,0 +1,14 @@
+:root{
+--ink:#111111;--ink-2:#3c3c3e;--ink-3:#6e6e73;
+--paper:#efefed;--paper-2:#ffffff;--paper-3:#e6e6e3;--paper-4:#d6d6d3;
+--grid-line:#e0e0dd;--grid-dot:#d2d2cf;
+--highlight:#cde0fb;--highlight-2:#b7d2f8;
+--blue:#0a63ff;--blue-2:#0050d6;--blue-ink:#ffffff;
+--yellow:var(--highlight);--yellow-2:var(--highlight-2);--accent:var(--blue);--yellow-ink:#111111;
+--popover:#1d1d1f;--popover-2:#48484a;--popover-on:#7db8ff;
+--white:#ffffff;
+--text-primary:var(--ink);--text-secondary:var(--ink-2);--text-muted:var(--ink-3);--text-inverse:#ffffff;--text-link:var(--blue);
+--surface-ground:var(--paper);--surface-card:var(--paper-2);--surface-strip:var(--paper-3);--surface-inverse:var(--popover);--surface-highlight:var(--highlight);
+--border-strong:var(--ink);--border-hair:rgba(17,17,17,.14);--border-faint:rgba(17,17,17,.08);
+--state-active:var(--highlight);--state-hover:var(--paper-3);--state-pressed:var(--highlight-2);--state-focus:var(--blue);
+}

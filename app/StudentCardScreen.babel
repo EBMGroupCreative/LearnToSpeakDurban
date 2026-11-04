@@ -1,0 +1,237 @@
+const CARD_W2 = 1080, CARD_H2 = 1920, CARD_PH = 576;
+const CARD_BLOCKED = 'Try again, bru. The card is official-ish.';
+// Card titles. Picked by the student, any time. Default: Student.
+const TITLE_GROUPS = [
+  ["For everyone", [{ n: "Student", d: "Technically. The beach counts as homework." }, { n: "Enrolled", d: "That’s it. That’s the achievement." }, { n: "Tan Pending", d: "Everything else is ready." }, { n: "Barefoot", d: "Shoes surrendered at enrolment." }, { n: "New Here", d: "It shows. In a nice way." }, { n: "Repeat Student", d: "Failed the exam. Stayed for Dezemba. Wise." }, { n: "Hungry", d: "Enrolled for the bunny content. Valid." }, { n: "Beginner", d: "Everyone was. The ocean doesn’t judge." }, { n: "Optimist", d: "Booked a one-way. We respect it." }, { n: "Early", d: "The exam is in Dezemba. The enthusiasm is now." }]],
+  ["For Joburg", [{ n: "Vaalie", d: "Packs for Durban like it has weather. Everyone starts here. No shame. Some shame." }, { n: "Just Arrived", d: "Via the N3. Tan loading." }, { n: "Semigrating", d: "One box packed. Emotionally, all of them." }, { n: "Escapee", d: "The Teams call ended. So did the chapter." }, { n: "Scheming", d: "Flights tab open since June." }, { n: "On Leave", d: "HR thinks it’s ten days. It isn’t." }, { n: "In Recovery", d: "From admin. Progress is daily." }, { n: "Pending", d: "Like the leave approval. Any day now." }, { n: "Ex-Corporate", d: "The lanyard is in the bin. The healing has begun." }, { n: "Boardroom Bru", d: "Fluent in synergy. Relearning human." }]],
+  ["For Cape Town", [{ n: "Capetonian", d: "Swapped penguins for warm water. Adjusting beautifully." }, { n: "Defector", d: "From the other coast. Chose the warm one." }, { n: "Thawing", d: "The first warm swim changed everything." }, { n: "Wind Refugee", d: "The southeaster finally won." }, { n: "Two Oceans", d: "Had two oceans. Could swim in neither." }, { n: "Wetsuit Free", d: "First swim without one. Emotional." }, { n: "Cold Water Survivor", d: "Years of brave swims. Has earned this." }, { n: "Ocean Level", d: "Down from the mountain. Staying down." }, { n: "Loyal, But Cold", d: "Cape Town remains gorgeous. The water remains ice." }, { n: "Winelands", d: "Traded tastings for tidal pools." }]],
+  ["For the rest of the country", [{ n: "Inland", d: "But trying. The ocean forgives." }, { n: "Landlocked", d: "Until now. Growth." }, { n: "Halfway", d: "Mentally at Harrismith since June." }, { n: "Free Stater", d: "Saw the Durban sign at Harrismith. Kept going." }, { n: "Karoo", d: "Longest drive. Deepest commitment." }, { n: "Gqeberha", d: "The friendly city, visiting the warm one." }, { n: "Harties", d: "It’s a dam. It doesn’t count. They know." }, { n: "Kalahari", d: "Knows heat. Meeting humidity." }, { n: "Limpopo", d: "Furthest from the ocean. Keenest about it." }, { n: "Mpumalanga", d: "The sunrise province, meeting the sunrise coast." }]],
+  ["For the internationals", [{ n: "Exchange Student", d: "Visa status: baggies." }, { n: "Long-Haul Laatie", d: "Flew far for this. Worth it." }, { n: "Tourist", d: "Upgraded to student. Big move." }, { n: "Jet Lagged", d: "Woke up at 4am, saw the sunrise, converted." }, { n: "Very Keen", d: "Not from here. Compensating with enthusiasm." }, { n: "Gap Year", d: "Found the gap. Staying in it." }, { n: "Backpacker", d: "The hostel said ‘no laka.’ Enrolled immediately." }, { n: "Digital Nomad", d: "WiFi optional. Ocean mandatory." }, { n: "Expat", d: "Of somewhere. Local of here, pending." }, { n: "On Holiday", d: "Forever, if the exam goes well." }]],
+  ["For the locals", [{ n: "Local", d: "Was never not local. The course is, frankly, about me." }, { n: "Born Fluent", d: "Didn’t enrol. Was issued at birth." }, { n: "The Syllabus", d: "Not a student. The source material." }, { n: "Invigilator", d: "Native speaker. Here to mark everyone else’s work." }, { n: "Auntie", d: "Will outdance you at the wedding. Has before." }, { n: "The OG", d: "Durban, before it was a syllabus." }, { n: "Curry Scholar", d: "PhD in bunny architecture." }, { n: "Taxi Fluent", d: "Can hail, board and exit entirely in speak Durban." }, { n: "Dawnie", d: "Up at 5am by choice. The ocean was already awake." }, { n: "Promenade", d: "Walks it daily. Owns it spiritually." }]],
+];
+const TITLE_ALL = TITLE_GROUPS.flatMap(g => g[1]);
+const TITLE_DEFAULT = TITLE_ALL.find(t => t.n === 'Student');
+const BAYER2 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+const CAPTION2 = 'Officially enrolled in Learn to Speak Durban, a public service by Gateway. Fluency: guaranteed-ish. Forks: 0. Enrol at https://learntospeakdurban.com\n' + LTSD_TAGS;
+
+function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+function dither2(ctx, img, x, y, w, h, { cell, style = 'Halftone', zoom, posX = 0.5, posY = 0.3 }) {
+  const cols = Math.floor(w / cell), rows = Math.floor(h / cell);
+  const off = document.createElement('canvas'); off.width = cols; off.height = rows;
+  const o = off.getContext('2d');
+  const sc = Math.max(cols / img.width, rows / img.height) * zoom;
+  o.fillStyle = '#fff'; o.fillRect(0, 0, cols, rows);
+  o.drawImage(img, (cols - img.width * sc) * posX, (rows - img.height * sc) * posY, img.width * sc, img.height * sc);
+  const d = o.getImageData(0, 0, cols, rows).data; const lum = new Float32Array(cols * rows); let mn = 1, mx = 0;
+  for (let i = 0; i < cols * rows; i++) { const l = (0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]) / 255; lum[i] = l; mn = Math.min(mn, l); mx = Math.max(mx, l); }
+  const span = Math.max(0.2, mx - mn); ctx.fillStyle = '#111';
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    let l = (lum[r * cols + c] - mn) / span; l = Math.min(1, Math.max(0, (l - 0.5) * 1.25 + 0.5));
+    const px = x + c * cell, py = y + r * cell;
+    if (style === 'Halftone') { const rad = cell * 0.66 * Math.sqrt(1 - l); if (rad > 0.4) { ctx.beginPath(); ctx.arc(px + cell / 2, py + cell / 2, rad, 0, Math.PI * 2); ctx.fill(); } }
+    else if (l < (BAYER2[r % 4][c % 4] + 0.5) / 16) ctx.fillRect(px, py, cell, cell);
+  }
+}
+
+function drawCard2(cv, o) {
+  const ctx = cv.getContext('2d');
+  const G = "'Switzer', 'Helvetica Neue', Arial, sans-serif", M = "'IBM Plex Mono', monospace";
+  const INK = '#111111', MUTED = '#6e6e73', HL = (window.LSD_PAL||{}).hl||'#cde0fb', BLUE = (window.LSD_PAL||{}).blue||'#0a63ff', POP = '#1d1d1f', PAPER = (window.LSD_PAL||{}).paper||'#efefed';
+  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  const mono = (t, x, y, sz = 24, col = INK, al = 'left') => { ctx.font = `500 ${sz}px ${M}`; ctx.fillStyle = col; ctx.textAlign = al; ctx.letterSpacing = '2px'; ctx.fillText(t.toUpperCase(), x, y); ctx.letterSpacing = '0px'; ctx.textAlign = 'left'; };
+  const fit = (t, max, sz, min, wt = 800, ls = -4) => { ctx.letterSpacing = ls + 'px'; let f = sz; ctx.font = `${wt} ${f}px ${G}`; while (f > min && ctx.measureText(t).width > max) { f -= 2; ctx.font = `${wt} ${f}px ${G}`; } return f; };
+  const handles = (x, y, w, h, dot = 9) => { ctx.fillStyle = BLUE; ctx.fillRect(x - 2, y, 4, h); ctx.fillRect(x + w - 2, y, 4, h); ctx.beginPath(); ctx.arc(x, y - dot + 2, dot, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(x + w, y + h + dot - 2, dot, 0, Math.PI * 2); ctx.fill(); };
+
+  ctx.clearRect(0, 0, CARD_W2, CARD_H2);
+  const X = 60, Y = 60, W = 960, H = 1800, L = X + 72, R = X + W - 72, CW = R - L;
+  ctx.fillStyle = '#fff'; rr(ctx, X, Y, W, H, 56); ctx.fill();
+
+  // header band: lanyard slot, title, Gateway logo
+  const BH = 260;
+  ctx.save(); rr(ctx, X, Y, W, H, 56); ctx.clip(); ctx.fillStyle = BLUE; ctx.fillRect(X, Y, W, BH); ctx.restore();
+  ctx.save(); ctx.globalCompositeOperation = 'destination-out'; rr(ctx, X + W / 2 - 90, Y + 32, 180, 26, 13); ctx.fill(); ctx.restore();
+  mono('Learn to Speak Durban', L, Y + 150, 26, '#fff');
+  ctx.font = `800 64px ${G}`; ctx.letterSpacing = '-2px'; ctx.fillStyle = '#fff'; ctx.fillText('Student card', L - 2, Y + 220); ctx.letterSpacing = '0px';
+  if (o.logo) { const lh = 176, lw = o.logo.width / o.logo.height * lh; ctx.drawImage(o.logo, R - lw + 8, Y + 64, lw, lh); }
+
+  // record block: small print, official-ish. Values print exactly as stored, uppercase.
+  const rec = (k, v, y, col = INK) => { ctx.font = `500 20px ${M}`; ctx.letterSpacing = '2px'; ctx.textAlign = 'left'; const K = k.toUpperCase() + ' '; ctx.fillStyle = MUTED; ctx.fillText(K, L, y); ctx.fillStyle = col; ctx.fillText(String(v).toUpperCase(), L + ctx.measureText(K).width, y); ctx.letterSpacing = '0px'; };
+  rec('Student no.', o.no, Y + 322, BLUE); rec('Enrolled:', o.enrolled || '—', Y + 352); rec('Origin:', o.origin || '—', Y + 382);
+  mono('Semester: Dezemba 2026', R, Y + 322, 20, MUTED, 'right');
+
+  // photo, selected
+  const PY = Y + 414, PH = CARD_PH;
+  ctx.save(); rr(ctx, L, PY, CW, PH, 24); ctx.clip(); ctx.fillStyle = '#f0f0ee'; ctx.fillRect(L, PY, CW, PH);
+  if (o.img) dither2(ctx, o.img, L, PY, CW, PH, o);
+  else { ctx.fillStyle = MUTED; ctx.textAlign = 'center'; ctx.font = `500 24px ${M}`; ctx.fillText('YOUR FACE GOES HERE.', L + CW / 2, PY + PH / 2 - 8); ctx.fillText('ANY FACE. YOURS IS RECOMMENDED.', L + CW / 2, PY + PH / 2 + 30); ctx.textAlign = 'left'; }
+  ctx.restore();
+  handles(L, PY, CW, PH, 11);
+  ctx.font = `500 18px ${M}`; ctx.letterSpacing = '2px'; const tg = 'FIG. 1 · THE STUDENT', tgw = ctx.measureText(tg).width; ctx.letterSpacing = '0px';
+  ctx.fillStyle = '#fff'; rr(ctx, L + 20, PY + PH - 62, tgw + 32, 42, 21); ctx.fill(); mono(tg, L + 36, PY + PH - 34, 18, INK);
+
+  // name
+  mono('Name', L, Y + 1070, 22, MUTED);
+  const nm = (o.name || 'Your Name').trim(); const parts = nm.split(/\s+/);
+  let lines = [nm], fs = fit(nm, CW, 112, 76);
+  if (ctx.measureText(nm).width > CW && parts.length > 1) { lines = [parts[0], parts.slice(1).join(' ')]; fs = Math.min(...lines.map(t => fit(t, CW, 92, 44))); }
+  else if (ctx.measureText(nm).width > CW) fs = fit(nm, CW, 76, 40);
+  ctx.font = `800 ${fs}px ${G}`; ctx.letterSpacing = '-4px'; ctx.fillStyle = INK;
+  const nb = Y + 1086 + fs * 0.8; lines.forEach((t, i) => ctx.fillText(t, L - 3, nb + i * fs * 0.94)); ctx.letterSpacing = '0px';
+
+  // fluency level, selected, with its popover
+  const lvl = o.level || TITLE_DEFAULT;
+  const ly = Y + 1398; mono('Title', L, ly - 106, 22, MUTED);
+  const lf = fit(lvl.n, CW - 20, 96, 52); const lw = ctx.measureText(lvl.n).width, lt = ly - lf * 0.83, lh = lf * 1.04;
+  ctx.fillStyle = HL; ctx.fillRect(L - 6, lt, lw + 16, lh); handles(L - 6, lt, lw + 16, lh);
+  ctx.fillStyle = INK; ctx.fillText(lvl.n, L, ly); ctx.letterSpacing = '0px';
+  ctx.font = `600 24px ${G}`; const pl = []; let cur = '';
+  lvl.d.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (cur && ctx.measureText(t).width > CW - 56) { pl.push(cur); cur = w; } else cur = t; }); pl.push(cur);
+  const pw = Math.min(CW + 6, Math.max(...pl.map(t => ctx.measureText(t).width)) + 48), pph = 30 + pl.length * 32, ppy = ly + 48;
+  ctx.fillStyle = POP; rr(ctx, L - 6, ppy, pw, pph, 16); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(L + 20, ppy + 1); ctx.lineTo(L + 33, ppy - 13); ctx.lineTo(L + 46, ppy + 1); ctx.fill();
+  ctx.fillStyle = '#fff'; pl.forEach((t, i) => ctx.fillText(t, L + 18, ppy + 40 + i * 32));
+
+  // data row
+  const gy = Y + 1560; ctx.fillStyle = 'rgba(17,17,17,.1)'; ctx.fillRect(L, gy, CW, 2); ctx.fillRect(L, gy + 110, CW, 2);
+  const cw3 = CW / 3; [['Favourite word', o.word], ['Forks on person', '0'], ['Valid until', 'Home Affairs calls back']].forEach(([k, v], i) => {
+    const cx = L + i * cw3 + (i ? 24 : 0); if (i) { ctx.fillStyle = 'rgba(17,17,17,.1)'; ctx.fillRect(L + i * cw3, gy + 20, 2, 70); }
+    mono(k, cx, gy + 42, 18, MUTED); fit(v, cw3 - 36, 38, 20, 700, -1); ctx.fillStyle = INK; ctx.fillText(v, cx, gy + 88); ctx.letterSpacing = '0px'; });
+
+  // footer: web address + sign-off
+  const by = Y + 1690, gr = 22, gx = L + gr, gcy = by + 30;
+  ctx.strokeStyle = BLUE; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(gx, gcy, gr, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(gx, gcy, gr * 0.42, gr, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(gx - gr, gcy); ctx.lineTo(gx + gr, gcy); ctx.stroke();
+  ctx.font = `700 30px ${G}`; ctx.letterSpacing = '-0.5px'; ctx.fillStyle = INK; ctx.fillText('learntospeakdurban.com', L + gr * 2 + 16, gcy + 11); ctx.letterSpacing = '0px';
+  mono(o.no + ' · Forks: 0', L, by + 84, 16, MUTED);
+  mono(LTSD_SLUG, L, by + 62, 11, '#a1a1a6'); // the 031 maker's mark, tucked into the fine print
+  mono('Report a card: learntospeakdurban.com/report', R, by + 92, 14, MUTED, 'right');
+  ctx.font = `500 14px ${M}`; ctx.letterSpacing = '0.4px'; ctx.fillStyle = INK; ctx.textAlign = 'right'; ctx.fillText(LTSD_TAGS, R, by + 70); ctx.letterSpacing = '0px'; ctx.textAlign = 'left'; // campaign hashtags: exact spelling, never uppercased
+  mono('Learn to Speak Durban.', R, by + 20, 18, INK, 'right'); mono('A public service by Gateway.', R, by + 46, 18, MUTED, 'right');
+}
+
+// Name field is Mode B (strict): blocked names never reach the card.
+// PRODUCTION: route all free text through a server-side moderation API (e.g. OpenAI Moderation / Azure AI Content Safety) PLUS this custom SA wordlist before rendering. Client-side filtering is a placeholder and must not ship as the only defence. Shareable text and Submit a word entries should also be human-reviewed where feasible.
+function StudentCardScreen() {
+  const cv = React.useRef(null), file = React.useRef(null), nameRef = React.useRef(null), wordRef = React.useRef(null), titleRef = React.useRef(null), photoRef = React.useRef(null);
+  const [img, setImg] = React.useState(null);
+  const [name, setName] = useStored('lsd2-name', 'Thandi Mkhize');
+  const [titleN, setTitleN] = useStored('lsd2-title', 'Student');
+  const level = TITLE_ALL.find(t => t.n === titleN) || TITLE_DEFAULT;
+  const [tg, setTg] = React.useState(null);
+  const [favW, setWord] = useStored('lsd2-favword', 'Kiff');
+  const word = window.LSD2.lessons.some(l => l.w === favW) ? favW : 'Kiff';
+  const [cell, setCell] = React.useState(8);
+  const [zoom, setZoom] = React.useState(1);
+  const [posY, setPosY] = React.useState(0.3);
+  const [posX, setPosX] = React.useState(0.5);
+  const [style, setStyle] = React.useState('Pixelate');
+  const [sheet, setSheet] = React.useState(false);
+  const [fresh] = React.useState(() => { try { const f = sessionStorage.getItem('lsd2-fresh'); sessionStorage.removeItem('lsd2-fresh'); return !!f; } catch (e) { return false; } });
+  const [drag, setDrag] = React.useState(false);
+  const [note, setNote] = React.useState(null);
+  const [logo, setLogo] = React.useState(null);
+  const [ready, setReady] = React.useState(0);
+  const me = useProfile();
+  const [guestNo, setGuestNo] = useStored('lsd2-cardno', null);
+  React.useEffect(() => { if (!me && !guestNo) setGuestNo('LTSD-2026-' + String(10000 + Math.floor(Math.random() * 89999))); }, []);
+  const no = (me && me.no) || guestNo || 'LTSD-2026-00000';
+  const enrolled = me && me.since ? ltsdStamp(me.since) : null;
+  // Card builder autofills from enrolment (name + ORIGIN). Both stay editable here; student no. and ENROLLED are the record and never editable.
+  const enrolOrigin = me ? (me.origin != null ? me.origin : me.location) || '' : '';
+  const [originEdit, setOrigin] = useStored('lsd2-origin', null);
+  const originV = originEdit != null ? originEdit : enrolOrigin;
+  // Blocked edits never reach the card: it keeps the last clean value.
+  const clean = React.useRef({ name: lsdBlocked(name) ? '' : name, origin: lsdBlocked(originV) ? enrolOrigin : originV });
+  if (!lsdBlocked(name)) clean.current.name = name;
+  if (!lsdBlocked(originV)) clean.current.origin = originV;
+  const cardName = clean.current.name, origin = me ? clean.current.origin.trim() : null;
+  const [vouchers, setVouchers] = useStored('lsd2-vouchers', []);
+  const claimed = vouchers.some(v => v.type === 'study-grant');
+  const [freshV, setFreshV] = React.useState(null);
+  const claim = () => { if (claimed) return; const g = newGrant(); setVouchers(list => list.some(v => v.type === 'study-grant') ? list : [...list, g]); setFreshV(g.id); setTimeout(() => setFreshV(null), 1400); };
+  React.useEffect(() => { const im = new Image(); im.onload = () => setLogo(im); im.src = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo-white.png'); Promise.all(["800 120px Switzer", "600 30px Switzer", "500 24px 'IBM Plex Mono'"].map(f => document.fonts.load(f))).catch(() => {}).then(() => setReady(1)); }, []);
+  React.useEffect(() => { if (cv.current) drawCard2(cv.current, { img, name: cardName, level, word, style, cell, zoom, posX, posY, no, logo, enrolled, origin }); }, [img, cardName, level, word, style, cell, zoom, posX, posY, logo, ready, no, enrolled, origin]);
+  const fitSc = img ? Math.max(816 / img.width, CARD_PH / img.height) * zoom : 1;
+  const slackY = img ? img.height * fitSc - CARD_PH > 4 : false, slackX = img ? img.width * fitSc - 816 > 4 : false;
+  const load = f => { if (!f || !f.type.startsWith('image/')) return setNote('That is not a photo. Gateway checked.'); const im = new Image(); im.onload = () => { setImg(im); setNote(null); setPosY(0.3); setPosX(0.5); }; im.src = URL.createObjectURL(f); };
+  // Tap a part of the card to jump to its control. On phones the controls sit below the card, so we scroll there first.
+  const jump = (el, then) => { if (!el) return; const top = el.getBoundingClientRect().top + scrollY - 120; window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' }); setTimeout(() => then && then(el), 260); };
+  // Drag the photo on the card to reposition it. A tap (no drag) swaps the photo.
+  const drg = React.useRef(null);
+  const onPhotoDown = e => { if (!img) return; const r = e.currentTarget.parentNode.getBoundingClientRect(); drg.current = { x: e.clientX, y: e.clientY, px: posX, py: posY, k: CARD_W2 / r.width, moved: false }; try { e.currentTarget.setPointerCapture(e.pointerId); } catch (er) {} };
+  const onPhotoMove = e => { const d = drg.current; if (!d) return; const dx = (e.clientX - d.x) * d.k, dy = (e.clientY - d.y) * d.k; if (!d.moved && Math.hypot(dx, dy) < 12) return; d.moved = true; const ox = img.width * fitSc - 816, oy = img.height * fitSc - CARD_PH, cl = v => Math.max(0, Math.min(1, v)); if (ox > 4) setPosX(cl(d.px - dx / ox)); if (oy > 4) setPosY(cl(d.py - dy / oy)); };
+  const onPhotoUp = () => { const d = drg.current; drg.current = null; if (d && d.moved) drg.last = Date.now(); };
+  const onPhotoClick = () => { if (drg.last && Date.now() - drg.last < 300) return; file.current.click(); };
+  const HOT = [
+    ['photo', 'Change photo', 132, 474, 816, CARD_PH, onPhotoClick],
+    ['name', 'Edit name', 132, 1112, 816, 220, () => jump(nameRef.current, el => { el.focus(); el.select(); })],
+    ['title', 'Pick a title', 126, 1336, 822, 280, () => { setTg(TITLE_GROUPS.find(([g, l]) => l.includes(level))[0]); jump(titleRef.current); }],
+    ['word', 'Pick a word', 132, 1622, 272, 106, () => jump(wordRef.current, el => { el.focus(); try { el.showPicker && el.showPicker(); } catch (e) {} })],
+  ];
+  const blob = () => new Promise(res => cv.current.toBlob(res, 'image/png'));
+  const save = async () => { const b = await blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = 'ltsd-student-card.png'; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); setNote('Downloaded: ltsd-student-card.png. Check your downloads folder. Then your DMs.'); };
+  const canShare = navigator.canShare && navigator.canShare({ files: [new File([''], 'x.png', { type: 'image/png' })] });
+  const share = async () => { if (!canShare) return setSheet(s => !s); const b = await blob(); try { await navigator.share({ files: [new File([b], 'ltsd-student-card.png', { type: 'image/png' })], text: CAPTION2 }); } catch (e) { setSheet(true); } };
+  const site = 'https://learntospeakdurban.com', enc = encodeURIComponent;
+  const socials = [['WhatsApp', 'https://wa.me/?text=' + enc(CAPTION2)], ['X', 'https://twitter.com/intent/tweet?text=' + enc(CAPTION2) + '&url=' + enc(site)], ['Facebook', 'https://www.facebook.com/sharer/sharer.php?u=' + enc(site)], ['LinkedIn', 'https://www.linkedin.com/sharing/share-offsite/?url=' + enc(site)]];
+  const copy = () => { ltsdCopy(CAPTION2); setNote('Caption copied. Paste responsibly.'); };
+  // Card actions. Desktop: in the controls column. Phones: directly under the card, then the Study Grant, then the rest.
+  const acts = cls => <div className={'sc-acts ' + cls}>
+    <div className="row">
+      <button type="button" className="btn primary" onClick={() => { ltsdTrack('student-card', 'download'); save(); }}>[ Download card ]</button>
+      <button type="button" className={'btn sm ' + (sheet ? 'soft' : 'line')} onClick={() => { ltsdTrack('student-card', 'socials'); share(); }}>Share to socials</button>
+      <button type="button" className="btn line sm" onClick={copy}>Copy caption</button>
+    </div>
+    {sheet && <div className="card share-sheet">
+      <div className="between lbl"><span className="blue">Share to</span><button type="button" className="chip" style={{ padding: '6px 12px', fontSize: 13 }} onClick={() => setSheet(false)}>Close</button></div>
+      <div className="row" style={{ gap: 8 }}>{socials.map(([k, u]) => <a key={k} className="btn line sm" href={u} target="_blank" rel="noopener">{k}</a>)}<button type="button" className="btn line sm" onClick={save}>Instagram story</button></div>
+      <span className="lbl muted">Desktop browsers won’t attach the picture for you. Download the card, then attach it. Instagram: download, open the app, post to your story. On a phone, Share opens your apps directly.</span>
+    </div>}
+    {note && <div key={note} className="lbl blue lt-note">{note}</div>}
+  </div>;
+  const next = cls => <a className={'btn primary sc-next ' + cls} href="#lessons/01" style={{ alignSelf: 'flex-start' }}>{'Card sorted. On to Lesson 01 →'}</a>;
+  return (
+    <div>
+      <PageHead index="07" kicker={fresh ? 'Enrolled · first order of business' : '1080 × 1920 · for your story'} title="Student card">
+        <p className="lead" style={{ margin: 0 }}>{fresh ? 'Welcome to the course. Before any lessons: paperwork. Upload a photo, post it. Joburg sees it. Joburg seethes.' : 'Proof of enrolment. Upload a photo, post it to your story, wait for the DMs.'}</p>
+        {fresh && <div className="row"><a className="btn line sm" href="#lessons/01">Skip. Straight to Lesson 1</a></div>}
+      </PageHead>
+      <div className="idc">
+        <div className="idc-ctl">
+          <div ref={photoRef} className={'card drop' + (drag ? ' on' : '')} onClick={() => file.current.click()} onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={e => { e.preventDefault(); setDrag(false); load(e.dataTransfer.files[0]); }}>
+            <input ref={file} type="file" accept="image/*" hidden onChange={e => load(e.target.files[0])} />
+            <div className="hl" style={{ fontSize: 30 }}>{img ? 'Face received.' : <>Upload a <Sel>face.</Sel></>}</div>
+            <div className="muted" style={{ fontSize: 15 }}>{img ? 'Click to swap it for a better angle.' : 'Drop a selfie or click. Gateway does not judge.'}</div>
+          </div>
+          <div className="ctl-row">
+            <div className="ctl"><span className="lbl muted">Treatment</span><div className="row" style={{ gap: 6 }}>{['Pixelate', 'Halftone'].map(s => <button key={s} type="button" className={'chip' + (style === s ? ' on' : '')} onClick={() => setStyle(s)}>{s}</button>)}</div></div>
+            <div className="ctl"><span className="lbl muted">{style + ' scale'}</span><div className="row" style={{ gap: 6 }}>{[['Fine', 4], ['Medium', 8], ['Chunky', 13], ['Heavy', 18], ['Billboard', 26]].map(([s, v]) => <button key={s} type="button" className={'chip' + (cell === v ? ' on' : '')} onClick={() => setCell(v)}>{s}</button>)}</div></div>
+          </div>
+          <label className="ctl"><span className="lbl muted">Name on the card</span><input ref={nameRef} className="field" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" /><BlockNote v={name} msg={CARD_BLOCKED} /></label>
+          {me && <label className="ctl"><span className="lbl muted">Origin · as written at enrolment, change it if you like</span><input className="field" value={originV} onChange={e => setOrigin(e.target.value)} placeholder="e.g. JHB, GP" maxLength={24} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} /><span className="between"><span><BlockNote v={originV} msg={CARD_BLOCKED} /></span><span className="lbl muted">{originV.length + ' / 24 · prints in capitals'}</span></span></label>}
+          <div ref={titleRef} className="ctl"><span className="lbl muted">Title</span>
+            <div className="tp-groups">
+              {TITLE_GROUPS.map(([g, list]) => { const open = tg === g, has = list.includes(level); return (
+                <div key={g} className={'tp-grp' + (open ? ' open' : '')}>
+                  <button type="button" className="tp-head" aria-expanded={open} onClick={() => setTg(open ? null : g)}><span className="lbl">{g}</span><span className="lbl muted">{has ? level.n : open ? 'Close' : list.length + ' titles'}</span></button>
+                  {open && <div className="tp-list" role="listbox" aria-label={g}>{list.map(t => <button key={t.n} type="button" role="option" aria-selected={t === level} className={'tp-o' + (t === level ? ' on' : '')} onClick={() => { setTitleN(t.n); setTg(null); }}><b>{t.n}</b><span>{t.d}</span></button>)}</div>}
+                </div>
+              ); })}
+            </div>
+          </div>
+          <label className="ctl"><span className="lbl muted">Favourite word</span>
+            <select ref={wordRef} className="field" value={word} onChange={e => setWord(e.target.value)}>{window.LSD2.lessons.map(l => <option key={l.n} value={l.w}>{l.n + ' · ' + l.w}</option>)}</select>
+          </label>
+          {acts('desk')}
+          {next('desk')}
+        </div>
+        <div className={'idc-prev' + (claimed ? ' docked' : '')}><div className="idc-cardcol"><div className={'idc-drop' + (drag ? ' on' : '')} onDragOver={e => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)} onDrop={e => { e.preventDefault(); setDrag(false); load(e.dataTransfer.files[0]); }}><canvas ref={cv} width={CARD_W2} height={CARD_H2}></canvas>{HOT.map(([k, lab, x, y, w, h, go]) => <button key={k} type="button" className={'idc-hot ' + k + (k === 'photo' && img ? ' drag' : '')} aria-label={lab} title={lab} style={{ left: (x / CARD_W2 * 100) + '%', top: (y / CARD_H2 * 100) + '%', width: (w / CARD_W2 * 100) + '%', height: (h / CARD_H2 * 100) + '%' }} onClick={go} {...(k === 'photo' ? { onPointerDown: onPhotoDown, onPointerMove: onPhotoMove, onPointerUp: onPhotoUp, onPointerCancel: onPhotoUp } : {})}><span className="lbl">{k === 'photo' ? (img ? 'Drag to move · tap to swap' : 'Drop or tap to add a photo') : lab}</span></button>)}</div>{acts('mob')}{me && !claimed && <button type="button" className="btn primary vc-claim sc-claim mob" onClick={claim}>Done. Claim my Study Grant.</button>}{img && <div className="idc-zoom"><span className="lbl muted">Zoom</span><input type="range" min="1" max="2.2" step="0.05" value={zoom} onChange={e => setZoom(+e.target.value)} aria-label="Zoom" /><button type="button" className="chip" onClick={() => { setZoom(1); setPosX(0.5); setPosY(0.3); }}>Reset</button></div>}<div className="lbl muted" style={{ textAlign: 'center' }}>{img ? 'Drag the photo to move it. Tap the name, title or word to change it.' : 'Tap the photo, name, title or word on the card to change it'}</div>{me && !claimed && <button type="button" className="btn primary vc-claim sc-claim desk" onClick={claim}>Done. Claim my Study Grant.</button>}{next('mob')}<a className="lbl muted" href="#report" style={{ textAlign: 'center' }}>Report a card</a></div>{claimed && <VoucherDock vouchers={vouchers} setVouchers={setVouchers} no={no} freshId={freshV} />}</div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { StudentCardScreen });

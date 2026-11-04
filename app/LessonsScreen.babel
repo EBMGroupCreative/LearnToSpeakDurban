@@ -1,0 +1,103 @@
+// Bonus entry: Durban itself. Lives outside lessons.js so the count stays honest.
+const DURBAN_ENTRY = { n: '00', w: 'Durban', p: 'n.', d: 'A city on the east coast where the ocean is warm, the curry is hot and nobody owns a fork. Not to be confused with Joburg, which has a dam.', e: 'Where’s Durban? Get on the N3, drive until you smell the ocean, then take off your shoes.', map: 'Durban, South Africa' };
+const lessonAudio = l => l.audio || (LSD_RES(window.LSD_ASSETS + 'audio/lesson-') + l.n + '.mp3');
+
+function HearWord({ l }) {
+  const [st, setSt] = React.useState('idle');
+  const ref = React.useRef(null);
+  React.useEffect(() => { setSt('idle'); return () => { if (ref.current) ref.current.pause(); }; }, [l.n]);
+  const play = () => {
+    if (ref.current) ref.current.pause();
+    const a = new Audio(lessonAudio(l)); ref.current = a; setSt('loading');
+    a.onplaying = () => setSt('playing'); a.onended = () => setSt('idle'); a.onerror = () => setSt('missing');
+    a.play().catch(() => setSt('missing'));
+  };
+  const stop = () => { if (ref.current) ref.current.pause(); setSt('idle'); };
+  return (
+    <button type="button" className={'hw ' + st} onClick={st === 'playing' ? stop : play} aria-label={st === 'playing' ? 'Stop' : 'Hear ' + l.w}>
+      <span className="hw-b"></span>
+      <span className="hw-t">
+        <b>{st === 'playing' ? 'Now say it back.' : st === 'loading' ? 'Clearing its throat…' : st === 'missing' ? 'Clip still in the studio.' : 'Hear the word'}</b>
+        <span className="lbl muted">{st === 'missing' ? 'The voice artist is at the beach' : 'Said by a local · Lesson ' + l.n}</span>
+      </span>
+      <span className="hw-eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+    </button>
+  );
+}
+
+function LessonsScreen({ sub, go }) {
+  const L = window.LSD2.lessons;
+  const B = window.LSD2.bonus || [];
+  const isDbn = sub === 'durban' || sub === '00';
+  const bi = B.findIndex(x => x.n === sub), isB = bi > -1;
+  const i = isDbn || isB ? -1 : Math.max(0, L.findIndex(x => x.n === sub));
+  const l = isDbn ? DURBAN_ENTRY : isB ? B[bi] : L[i];
+  const [q, setQ] = React.useState('');
+  const [done, setDone] = useStored('lsd2-learnt', []);
+  const [shown, setShown] = React.useState(true);
+  const [copied, copy] = useCopy();
+  React.useEffect(() => setShown(true), [l.n]);
+  const match = x => (x.w + ' ' + x.d).toLowerCase().includes(q.trim().toLowerCase());
+  const list = L.filter(match), blist = B.filter(match);
+  const dbnMatch = 'durban'.includes(q.trim().toLowerCase());
+  const isDone = done.includes(l.n);
+  const toggle = () => setDone(d => d.includes(l.n) ? d.filter(x => x !== l.n) : [...d, l.n]);
+  const pick = a => { if (a === 'Copy' || a === 'Copied') copy(l.w); else if (a === 'Translate') go('ekselator'); else setShown(s => !s); };
+  const long = l.w.length > 8;
+  const learnt = done.filter(n => /^\d\d$/.test(n) && n !== '00').length;
+  return (
+    <div className="lessons">
+      <aside className="card ls-side">
+        <div>
+          <div className="between lbl"><span>Fluency</span><span className="blue">{pad2(learnt) + ' / ' + L.length}</span></div>
+          <div className="bar"><i style={{ width: (learnt / L.length * 100) + '%' }}></i></div>
+          <FluencyLine style={{ marginTop: 10 }} />
+        </div>
+        <input className="field" placeholder={'Find a lesson. There are ' + L.length + '.'} value={q} onChange={e => setQ(e.target.value)} />
+        <div className="ls-list">
+          {dbnMatch && <a href="#lessons/durban" className={'ls-row' + (isDbn ? ' on' : '')}><span className="lbl ls-n">00</span><span className="ls-w">Durban</span><span className="lbl ls-done">Bonus</span></a>}
+          {list.map(x => (
+            <a key={x.n} href={'#lessons/' + x.n} className={'ls-row' + (x.n === l.n ? ' on' : '') + (done.includes(x.n) ? ' done' : '')}>
+              <span className="lbl ls-n">{x.n}</span><span className="ls-w">{x.w}</span>{done.includes(x.n) && <span className="lbl ls-done">Learnt</span>}
+            </a>
+          ))}
+          {blist.length > 0 && <div className="lbl muted ls-grp">{'Bonus words · ' + B.length}</div>}
+          {blist.map(x => (
+            <a key={x.n} href={'#lessons/' + x.n} className={'ls-row' + (x.n === l.n ? ' on' : '') + (done.includes(x.n) ? ' done' : '')}>
+              <span className="lbl ls-n">{x.n}</span><span className="ls-w">{x.w}</span>{done.includes(x.n) && <span className="lbl ls-done">Learnt</span>}
+            </a>
+          ))}
+          {!list.length && !blist.length && !dbnMatch && <div className="muted" style={{ padding: 12 }}>No lesson for that. Yet.</div>}
+        </div>
+      </aside>
+      <article className="ls-main">
+        <div className="between"><span className="pill lbl">{isDbn ? 'Lesson 00 · bonus' : isB ? 'Bonus word ' + l.n : 'Lesson ' + l.n}</span><span className="lbl">{isDbn ? 'Before 01' : isB ? l.n + ' / B' + pad2(B.length) + ' · not in the exam' : l.n + ' / ' + L.length}</span></div>
+        <h1 className="hl ls-word" style={{ fontSize: long ? 'clamp(56px, 7.4vw, 128px)' : 'clamp(64px, 10.5vw, 176px)' }}>
+          <Sel key={l.n} className="draw sm">{l.w}<Pop items={[copied ? 'Copied' : 'Copy', shown ? 'Hide meaning' : 'Look Up', 'Translate']} active={1} onPick={pick} /></Sel>
+        </h1>
+        <HearWord l={l} />
+        {shown ? <>
+          <p className="ls-def"><i className="pos">({l.p})</i> — {l.d}</p>
+          <div className="card ls-eg"><span className="lbl blue">E.g.</span><div className="hl ls-e">{l.e ? '“' + l.e + '”' : <span className="muted">Line in development. The writers are at the beach.</span>}</div>{l.e2 && <><span className="lbl blue">Or</span><div className="hl ls-e">“{l.e2}”</div></>}</div>
+          {l.map && <div className="card ls-map">
+            <div className="between lbl"><span className="blue">Fig. 1 · Where it is</span><span className="muted">29.86° S, 31.02° E · ocean included</span></div>
+            <iframe title="Map of Durban" src={'https://maps.google.com/maps?q=' + encodeURIComponent(l.map) + '&z=11&output=embed'} loading="lazy" referrerPolicy="no-referrer-when-downgrade"></iframe>
+            <div className="between" style={{ flexWrap: 'wrap' }}><span className="lbl muted">The blue bit on the right is the ocean. Joburg doesn’t have one.</span><a className="btn line sm" target="_blank" rel="noopener" href={'https://www.google.com/maps/dir/Johannesburg/' + encodeURIComponent(l.map)}>Directions from Joburg</a></div>
+          </div>}
+        </> : <div className="ls-hidden">Meaning hidden. Say it out loud, guess, then hit Look Up. Nobody’s watching. Except Gateway.</div>}
+        <div className="row">
+          {i > 0 && <a className="btn line sm" href={'#lessons/' + L[i - 1].n}>Previous</a>}
+          {i === 0 && <a className="btn line sm" href="#lessons/durban">Previous</a>}
+          {isB && <a className="btn line sm" href={'#lessons/' + (bi > 0 ? B[bi - 1].n : L[L.length - 1].n)}>Previous</a>}
+          <button type="button" className={'btn sm ' + (isDone ? 'soft' : 'line')} onClick={toggle}>{isDone ? 'Learnt. Lekker.' : 'Mark as learnt'}</button>
+          {isB ? <a className="btn primary sm" href={bi < B.length - 1 ? '#lessons/' + B[bi + 1].n : '#exam'}>{bi < B.length - 1 ? 'Next bonus word' : 'Sit the final exam'}</a>
+            : <a className="btn primary sm" href={isDbn ? '#lessons/01' : i < L.length - 1 ? '#lessons/' + L[i + 1].n : '#exam'}>{isDbn ? 'Start Lesson 01' : i < L.length - 1 ? 'Next lesson' : 'Sit the final exam'}</a>}
+          {i === L.length - 1 && B.length > 0 && <a className="btn line sm" href={'#lessons/' + B[0].n}>{B.length + ' bonus words'}</a>}
+        </div>
+        <div className="lbl muted">Learn to Speak Durban. A public service by Gateway.</div>
+      </article>
+    </div>
+  );
+}
+
+Object.assign(window, { LessonsScreen, DURBAN_ENTRY });

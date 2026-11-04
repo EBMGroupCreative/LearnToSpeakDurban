@@ -1,0 +1,90 @@
+// Fluency levels. Based on lessons marked learnt (lsd2-learnt). The top level also needs a passed final exam.
+const FLUENCY = [
+  { n: 'Vaalie', at: 0, d: 'Packs for Durban like it has weather. Everyone starts here. No shame. Some shame.' },
+  { n: 'Day Visitor', at: 3, d: 'Knows one word. Uses it wrong. We love the energy.' },
+  { n: 'Larney', at: 6, d: 'Still wearing shoes to the beach. We’re working on it.' },
+  { n: 'Baggies-Ready', at: 10, d: 'Dress code understood. Vocabulary loading.' },
+  { n: 'Bunny Apprentice', at: 15, d: 'Eats with hands now. Fork privileges surrendered voluntarily.' },
+  { n: 'Shap Shap Scholar', at: 20, d: 'Understands tone. This is the hard part. Respect.' },
+  { n: 'Honorary Laatie', at: 26, d: 'Gets called ‘laatie’ by strangers. Correctly.' },
+  { n: 'Practically Pozi', at: 32, d: 'Gives directions using robots. Says ‘the coast’ and means the right one.' },
+  { n: 'Mfethu', at: 40, d: 'Family now. The taxi hoots at me in greeting.' },
+  { n: 'Fluent-ish', at: 50, exam: true, d: 'As fluent as we’re legally allowed to guarantee. Certificate unlocked.' },
+];
+
+function fluencyOf(learnt, exam) {
+  const L = window.LSD2.lessons, total = L.length;
+  const count = (learnt || []).filter(n => L.some(l => l.n === n)).length;
+  const pass = typeof EXAM_PASS === 'number' ? EXAM_PASS : Math.round(window.LSD2.exam.length * 0.69);
+  const passed = !!(exam && exam.best >= pass);
+  const examOpen = lsdNow() >= window.EXAM_UNLOCK;
+  let idx = 0;
+  FLUENCY.forEach((l, i) => { if (l.exam ? passed && count >= total : count >= l.at) idx = i; });
+  const next = FLUENCY[idx + 1] || null;
+  const nextTxt = !next ? 'top of the ladder' : next.exam ? (examOpen ? 'next: ' + next.n + ' · all ' + total + ' + the exam' : 'next: ' + next.n + ' · unlocks with the exam · 1 Dezemba') : 'next: ' + next.n + ' at ' + next.at;
+  return { count, total, idx, level: FLUENCY[idx], next, passed, examOpen, line: count + ' / ' + total + ' · ' + FLUENCY[idx].n + ' · ' + nextTxt };
+}
+
+function useFluency() {
+  const [learnt] = useStored('lsd2-learnt', []);
+  const [exam] = useStored('lsd2-exam', null);
+  return fluencyOf(learnt, exam);
+}
+
+function FluencyLine({ style }) {
+  const f = useFluency();
+  return <div className="lbl muted" style={style}>{f.line}</div>;
+}
+
+// The ladder. Before the exam opens it tops out at Mfethu; Fluent-ish sits underneath, greyed.
+function FluencyLadder() {
+  const f = useFluency();
+  return (
+    <div className="ladder">
+      {FLUENCY.map((l, i) => {
+        const locked = l.exam && !f.examOpen && i !== f.idx;
+        const cls = 'ld-r' + (i === f.idx ? ' on' : i > f.idx ? ' todo' : '') + (locked ? ' locked' : '');
+        return (
+          <div key={l.n} className={cls}>
+            <span className="lbl ld-i">{pad2(i + 1)}</span>
+            <b>{i === f.idx ? <Sel>{l.n}</Sel> : l.n}</b>
+            <span className="lbl ld-at">{locked ? 'Unlocks with the exam · 1 Dezemba' : l.exam ? 'All ' + f.total + ' + final exam' : l.at === 0 ? 'Day one' : l.at + ' lessons'}</span>
+            <p>{l.d}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Level-up moment. Remembers the last level seen per student, stamps the new one, then leaves quietly.
+function LevelStamp() {
+  const f = useFluency();
+  const [seen, setSeen] = useStored('lsd2-level', null);
+  const [show, setShow] = React.useState(null);
+  React.useEffect(() => {
+    if (seen === null) { setSeen(f.idx); return; }
+    if (f.idx > seen) setShow({ i: f.idx, out: false });
+    if (f.idx !== seen) setSeen(f.idx);
+  }, [f.idx]);
+  React.useEffect(() => {
+    if (!show || show.out) return;
+    const a = setTimeout(() => setShow(s => s && { ...s, out: true }), 3400);
+    return () => clearTimeout(a);
+  }, [show && show.i, show && show.out]);
+  React.useEffect(() => { if (show && show.out) { const b = setTimeout(() => setShow(null), 320); return () => clearTimeout(b); } }, [show && show.out]);
+  if (!show) return null;
+  const l = FLUENCY[show.i];
+  return (
+    <div className="lvup" role="status" aria-live="polite">
+      <div className={'lvup-c' + (show.out ? ' out' : '')} key={show.i} onClick={() => setShow(s => ({ ...s, out: true }))}>
+        <div className="between lbl"><span className="blue">New fluency level</span><span className="muted">{pad2(show.i + 1) + ' / ' + FLUENCY.length}</span></div>
+        <div className="hl lvup-n" style={{ fontSize: 'min(' + Math.min(80, Math.floor(560 / (l.n.length * 0.46))) + 'px, ' + Math.min(13, +(100 / (l.n.length * 0.62)).toFixed(1)) + 'vw)' }}><Sel>{l.n}</Sel></div>
+        <p>{l.d}</p>
+        <span className="lbl muted">{f.line}</span>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { FLUENCY, fluencyOf, useFluency, FluencyLine, FluencyLadder, LevelStamp });

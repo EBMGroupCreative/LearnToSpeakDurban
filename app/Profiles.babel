@@ -1,0 +1,268 @@
+// Student profiles: enrol / return door (email + locker code, no passwords), per-profile progress. Stored on this device (localStorage).
+const lsGet = (k, d) => { try { const s = localStorage.getItem(k); return s ? JSON.parse(s) : d; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} window.dispatchEvent(new CustomEvent('lsd2-store', { detail: { key: k, n: v } })); };
+const codeHash = s => { let h = 5381; for (const c of String(s)) h = (h * 33 + c.charCodeAt(0)) >>> 0; return h.toString(36); };
+const firstName = n => (n || '').trim().split(/\s+/)[0] || 'bru';
+const goHome = () => { if (location.hash.replace('#', '').split('/')[0] === 'enrol') location.hash = 'home'; };
+
+function signIn(email) { lsSet('lsd2-session', email); lsSet('lsd2-enrolled', true); }
+function signOut() { lsSet('lsd2-session', null); lsSet('lsd2-enrolled', false); }
+const normUser = s => String(s || '').trim().replace(/^@/, '');
+// Student number: assigned once at enrolment, never changes. Prototype: random and unique on this device.
+// PRODUCTION: assigned server-side, sequential from LTSD-2026-00001 (see docs/study-grant-handover.md).
+function newStudentNo(profiles) { const taken = new Set(Object.values(profiles).map(p => p.no)); let n; do { n = 'LTSD-2026-' + String(1 + Math.floor(Math.random() * 99999)).padStart(5, '0'); } while (taken.has(n)); return n; }
+// origin = exactly as typed (trimmed). location mirrors it for the Class Rankings.
+// No password and no phone number on the record. The email is the key; the locker code proves it.
+function createProfile({ username, name, email, news, location }) {
+  const profiles = lsGet('lsd2-profiles', {});
+  profiles[email] = { username, name, email, location, origin: location, news, verified: new Date().toISOString(), no: newStudentNo(profiles), since: new Date().toISOString() };
+  lsSet('lsd2-profiles', profiles);
+  // Bring any guest progress along to the first profile that's made on this device.
+  LSD_SCOPED.forEach(k => { const g = localStorage.getItem(k); if (g !== null && localStorage.getItem(k + '@' + email) === null) localStorage.setItem(k + '@' + email, g); });
+  localStorage.setItem('lsd2-name@' + email, JSON.stringify(name));
+  localStorage.setItem('lsd2-origin@' + email, JSON.stringify(location));
+}
+
+// TESTING ONLY — remove with the button above.
+function skipEnrol() {
+  const email = 'test@lsd.test';
+  if (!lsGet('lsd2-profiles', {})[email]) createProfile({ username: 'test_student', name: 'Test Student', email, news: false, location: 'JHB, GP' });
+  signIn(email); location.hash = 'card';
+}
+
+function useProfile() {
+  const [session] = useStored('lsd2-session', null);
+  const [profiles] = useStored('lsd2-profiles', {});
+  const p = session ? profiles[session] || null : null;
+  return p && /^LSD-/.test(p.no || '') ? { ...p, no: 'LT' + p.no.slice(1) } : p;
+}
+
+// Locker code: the registrar emails a 6-digit code and it does all the verifying. Students never invent one. No passwords anywhere.
+// Prototype: a 2-second "sending" beat, then any 6 digits pass.
+// PRODUCTION: Supabase email OTP (signInWithOtp → verifyOtp, type 'email') over custom SMTP sized for campaign volume.
+// Codes expire in minutes, are single-use and attempt-limited. A verified device stays remembered (persisted session), so this
+// screen only reappears on a new device or a cleared browser. Card issuance, Class Rankings writes and the Study Grant all require
+// a verified email. No passwords are stored. No phone numbers are collected.
+const LK_N = 6, LK_SEND_MS = 2000, LK_RESEND_S = 30;
+function LockerCode({ email, onBack, onVerified }) {
+  const [phase, setPhase] = React.useState('sending'); // sending → enter → checking → ok
+  const [d, setD] = React.useState(() => Array(LK_N).fill(''));
+  const [wait, setWait] = React.useState(LK_RESEND_S);
+  const boxes = React.useRef([]);
+  const done = React.useRef(onVerified); done.current = onVerified;
+  React.useEffect(() => { if (phase !== 'sending') return; const t = setTimeout(() => setPhase('enter'), LK_SEND_MS); return () => clearTimeout(t); }, [phase]);
+  React.useEffect(() => { if (phase === 'enter') { const b = boxes.current[d.findIndex(c => !c)] || boxes.current[0]; b && b.focus({ preventScroll: true }); } }, [phase]);
+  React.useEffect(() => { if (phase !== 'enter' || wait <= 0) return; const t = setTimeout(() => setWait(w => w - 1), 1000); return () => clearTimeout(t); }, [phase, wait]);
+  React.useEffect(() => { if (phase === 'checking') { const t = setTimeout(() => setPhase('ok'), 700); return () => clearTimeout(t); } if (phase === 'ok') { const t = setTimeout(() => done.current(), 1700); return () => clearTimeout(t); } }, [phase]);
+  const resend = () => { setD(Array(LK_N).fill('')); setWait(LK_RESEND_S); setPhase('sending'); };
+  const fill = (i, str) => {
+    const s = String(str).replace(/\D/g, ''); if (!s) return;
+    const v = [...d]; let j = i; for (const c of s) { if (j >= LK_N) break; v[j++] = c; }
+    setD(v);
+    if (v.every(c => c)) { setPhase('checking'); return; }
+    const nx = boxes.current[Math.min(j, LK_N - 1)]; nx && nx.focus();
+  };
+  const change = i => e => { const s = e.target.value.replace(/\D/g, ''); if (!s) { const v = [...d]; v[i] = ''; setD(v); return; } fill(s.length >= LK_N ? 0 : i, s.length >= LK_N ? s : s.slice(-1)); };
+  const key = i => e => {
+    if (e.key === 'Backspace') { e.preventDefault(); const v = [...d]; if (v[i]) { v[i] = ''; setD(v); } else if (i > 0) { v[i - 1] = ''; setD(v); boxes.current[i - 1].focus(); } }
+    else if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); boxes.current[i - 1].focus(); }
+    else if (e.key === 'ArrowRight' && i < LK_N - 1) { e.preventDefault(); boxes.current[i + 1].focus(); }
+  };
+  if (phase === 'ok') return (
+    <div className="lk-ok" role="status">
+      <span className="lbl blue">Verified</span>
+      <div className="hl" style={{ fontSize: 'clamp(40px, 3.6vw, 60px)' }}>Welcome to the student <Sel>body.</Sel></div>
+      <span className="lbl muted">{email}</span>
+    </div>
+  );
+  const busy = phase !== 'enter';
+  return <>
+    <div className="between lbl"><span className="blue">Enrolment desk · locker code</span><button type="button" className="lbl muted lk-back" onClick={onBack}>Wrong email? Back</button></div>
+    <div className="lk-word"><span className="hl" style={{ fontSize: 'clamp(40px, 3.6vw, 60px)' }}>Locker <Sel>code.</Sel></span><span className="lbl muted">(n.)</span></div>
+    <p className="lk-def">— The registrar has emailed you your locker code. Checke your inbox.</p>
+    <div className={'lk-boxes' + (busy ? ' busy' : '')} role="group" aria-label="Six-digit locker code">
+      {d.map((c, i) => <input key={i} ref={el => { boxes.current[i] = el; }} className={'lk-box' + (c ? ' on' : '')} value={c} inputMode="numeric" pattern="[0-9]*" autoComplete={i === 0 ? 'one-time-code' : 'off'} aria-label={'Digit ' + (i + 1) + ' of ' + LK_N} disabled={busy} onChange={change(i)} onKeyDown={key(i)} onPaste={e => { e.preventDefault(); fill(i, e.clipboardData.getData('text')); }} onFocus={e => e.target.select()} />)}
+    </div>
+    {phase === 'sending' ? <div className="lk-send" role="status"><span className="lbl blue">{'Sending to ' + email + ' · the registrar is finding a stamp'}</span><i><i key={wait + phase}></i></i></div>
+      : phase === 'checking' ? <span className="lbl blue" role="status">Checking with the registrar…</span>
+      : <div className="lk-row"><span className="lbl muted">{'Sent to ' + email}</span>{wait > 0 ? <span className="lbl muted">{'Nothing yet? Check spam. Resend in ' + wait + 's'}</span> : <button type="button" className="lk-door" onClick={resend}>Nothing yet? Send another locker code.</button>}</div>}
+    {/* TESTING ONLY — remove before launch (site/README.md · Before launch). PRODUCTION verifies the code for real (verifyOtp). */}
+    <span className="lk-test"><span className="lbl muted">(Prototype: any code works. Production verifies for real.)</span><span className="lbl" style={{ color: '#c0392b' }}>Testing only · remove before launch</span></span>
+  </>;
+}
+
+// Enrolment desk. Card mode: pick New (its own page, #enrol/new) or the return door (email only, opens in place).
+// full = the #enrol/new page: the new-student form first. #enrol/in opens the card straight on the return door.
+// Both paths end on the locker code screen. The profile is only created (new) or restored (return) once the code verifies.
+// ORIGIN: free text, max 24, printed uppercase on the card exactly as typed. No dropdowns, no auto-correct, no commentary.
+const ORIGIN_MAX = 24, ORIGIN_BLOCKED = 'Try again, bru. The card is official-ish.';
+function EnrolCard({ full }) {
+  const me = useProfile();
+  const [profiles] = useStored('lsd2-profiles', {});
+  const known = Object.values(profiles);
+  const [mode, setMode] = React.useState(full ? 'new' : location.hash === '#enrol/in' ? 'in' : 'pick');
+  const [f, setF] = React.useState({ username: '', name: '', location: '', email: '', news: true });
+  const [err, setErr] = React.useState({});
+  const [pending, setPending] = React.useState(null); // { kind: 'new' | 'in', email, data }
+  const [forks] = useStored('lsd2-forks', 0);
+  const set = k => e => { setF({ ...f, [k]: k === 'news' ? e.target.checked : e.target.value }); if (err[k]) setErr({ ...err, [k]: null }); };
+  const swap = m => { setMode(m); setErr({}); };
+  const submit = e => {
+    e.preventDefault(); const x = {}, email = f.email.trim().toLowerCase();
+    if (mode === 'new') {
+      const u = normUser(f.username), all = Object.values(profiles);
+      if (!u) x.username = 'Gateway needs this. It goes on the Class Rankings.';
+      else if (!/^[a-z0-9_.]{3,20}$/i.test(u)) x.username = '3–20 letters, numbers, _ or . — no spaces, this isn’t Joburg traffic.';
+      else if (all.some(p => (p.username || '').toLowerCase() === u.toLowerCase())) x.username = 'Taken. Someone got there first. Probably from Durban.';
+      if (!f.name.trim()) x.name = 'Gateway needs this.';
+      if (!f.location.trim()) x.location = 'Gateway needs this for the card.';
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) x.email = email ? 'That looks like a vaalie typed it.' : 'Gateway needs this.';
+    else if (mode === 'new' && profiles[email]) x.email = 'Already enrolled. Use the return door below.';
+    else if (mode === 'in' && !profiles[email]) x.email = 'No student by that email. Enrol, it’s free.';
+    // PRODUCTION: route all free text through a server-side moderation API (e.g. OpenAI Moderation / Azure AI Content Safety) PLUS this custom SA wordlist before rendering. Client-side filtering is a placeholder and must not ship as the only defence. Shareable text and Submit a word entries should also be human-reviewed where feasible.
+    if (mode === 'new') ['username', 'name', 'location', 'email'].forEach(q => { if (f[q] && lsdBlocked(f[q])) x[q] = q === 'username' ? 'Not on the Class Rankings, bru.' : q === 'name' ? ORIGIN_BLOCKED : q === 'location' ? ORIGIN_BLOCKED : 'Not that word, bru.'; });
+    setErr(x); if (Object.keys(x).length) return;
+    setPending(mode === 'new' ? { kind: 'new', email, data: { username: normUser(f.username), name: f.name.trim(), location: f.location.trim(), email, news: f.news } } : { kind: 'in', email });
+    setMode('code');
+  };
+  const verified = () => {
+    const P = pending; if (!P) return;
+    if (P.kind === 'new') { createProfile(P.data); try { sessionStorage.setItem('lsd2-fresh', '1'); } catch (e) {} }
+    signIn(P.email); setPending(null);
+    // New students go straight to the card builder. Returning students land on their card (marks + voucher dock) unless they were unlocking another page.
+    const pg = location.hash.replace('#', '').split('/')[0];
+    if (P.kind === 'new' || !pg || pg === 'enrol' || pg === 'home') { location.hash = 'card'; window.scrollTo(0, 0); }
+  };
+  const L = (k, label) => <span className={'lbl ' + (err[k] ? 'blue' : 'muted')}>{label}{err[k] ? ' · ' + err[k] : ''}</span>;
+  const door = <button type="button" className="lk-door" onClick={() => swap('in')}>Enrolled before? Enter your email — the registrar will send your locker code.</button>;
+  if (mode === 'code' && pending) return (
+    <div className="card enrol-card"><LockerCode email={pending.email} onBack={() => { setMode(pending.kind); setPending(null); }} onVerified={verified} /></div>
+  );
+  if (me) return (
+    <div className="card enrol-card">
+      <div className="between lbl"><span className="blue">Enrolment desk · signed in</span><span className="muted">{me.no}</span></div>
+      <div className="hl" style={{ fontSize: 'clamp(40px, 3.6vw, 60px)' }}>Howzit, <Sel>{firstName(me.name)}.</Sel></div>
+      <p style={{ margin: 0, fontSize: 17, lineHeight: 1.45, color: 'var(--ink-2)' }}>Your progress is filed under your name. Lessons, flashcards, exam marks. Nobody checks. Gateway checks.</p>
+      <a className="btn primary" style={{ width: '100%' }} href="#profile">[ Open your profile ]</a>
+      <a className="btn line sm" style={{ width: '100%' }} href="#lessons/01">Carry on with the course</a>
+      <button type="button" className="btn line sm" style={{ width: '100%' }} onClick={signOut}>Log out. The ocean will remember you.</button>
+    </div>
+  );
+  const foot = <>
+    {/* TESTING ONLY — remove before launch: skips enrolment with a throwaway test profile. */}
+    <button type="button" className="btn line sm" style={{ width: '100%' }} onClick={skipEnrol}>Skip enrolment (testing)</button>
+    <div className="lbl muted" style={{ textAlign: 'center' }}>{'Students enrolled today: 1,204 · Forks confiscated: ' + forksTotal(forks)}</div>
+  </>;
+  if (mode === 'pick') return (
+    <div className="card enrol-card">
+      <div className="between lbl"><span className="blue">Enrolment desk · open</span><span className="muted">Fee: R0</span></div>
+      <div className="hl" style={{ fontSize: 'clamp(40px, 3.6vw, 60px)' }}>Enrol, bru.<br />It’s free, <Sel>ekse.</Sel></div>
+      <p style={{ margin: 0, fontSize: 17, lineHeight: 1.45, color: 'var(--ink-2)' }}>Opens all 50 lessons, the final exam and your Certificate of Fluency. First time here, or have we met?</p>
+      <a className="btn primary" style={{ width: '100%' }} href="#enrol/new">[ Enrol a new student ]</a>
+      {door}
+      {foot}
+    </div>
+  );
+  return (
+    <form className="card enrol-card" onSubmit={submit} noValidate>
+      <div className="between lbl"><span className="blue">{mode === 'new' ? 'Enrolment desk · new student' : 'Enrolment desk · return door'}</span>{mode === 'new' ? <span className="muted">Fee: R0</span> : <button type="button" className="lbl muted lk-back" onClick={() => swap(full ? 'new' : 'pick')}>Back</button>}</div>
+      {mode === 'new' ? <>
+        <div className="hl" style={{ fontSize: 'clamp(40px, 3.6vw, 60px)' }}>Enrol, bru.<br />It’s free, <Sel>ekse.</Sel></div>
+        <p style={{ margin: 0, fontSize: 17, lineHeight: 1.45, color: 'var(--ink-2)' }}>A few fields. Still the least admin you’ll do all year. Opens all 50 lessons, the final exam and your Certificate of Fluency.</p>
+        <label className="ctl">{L('username', 'Username · shows on the Class Rankings')}<input className="field" value={f.username} onChange={set('username')} placeholder="e.g. sandton_sipho. Choose wisely. Joburg will see it." autoComplete="username" maxLength={21} /></label>
+        <label className="ctl">{L('name', 'Full name · for the certificate only')}<input className="field" value={f.name} onChange={set('name')} placeholder="As it should appear on the certificate" autoComplete="name" /></label>
+        <label className="ctl">{L('location', 'Where are you from? (City, province — shorthand welcome: JHB, DBN, CPT.)')}<input className="field" value={f.location} onChange={set('location')} placeholder="e.g. JHB, GP" maxLength={ORIGIN_MAX} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} /><span className="between"><span>{!err.location && <BlockNote v={f.location} msg={ORIGIN_BLOCKED} />}</span><span className="lbl muted">{f.location.length + ' / ' + ORIGIN_MAX + ' · prints on your card'}</span></span></label>
+      </> : <>
+        <div className="hl" style={{ fontSize: 'clamp(40px, 3.6vw, 60px)' }}>Welcome back,<br /><Sel>bru.</Sel></div>
+        <p style={{ margin: 0, fontSize: 17, lineHeight: 1.45, color: 'var(--ink-2)' }}>Your progress is exactly where you left it. Unlike your sunglasses. Enter your email and the registrar sends your locker code.</p>
+        {known.length > 0 && <div className="row" style={{ gap: 8 }}><span className="lbl muted" style={{ width: '100%' }}>Students on this device</span>{known.map(p => <button key={p.email} type="button" className={'chip' + (f.email === p.email ? ' on' : '')} onClick={() => setF({ ...f, email: p.email })}>{p.name}</button>)}</div>}
+      </>}
+      <label className="ctl">{L('email', 'Email address')}<input className="field" type="email" inputMode="email" autoComplete="email" value={f.email} onChange={set('email')} placeholder="you@example.co.za" />{mode === 'new' && <span className="lk-fine">No password. Your email is your key — the registrar sends a locker code when you need in.</span>}</label>
+      {mode === 'new' && <label className="tick" style={{ fontSize: 14 }}><input type="checkbox" checked={f.news} onChange={set('news')} /><span>Send me lessons, exam reminders and Gateway rewards. Unsubscribe any time — no hard feelings, bru.</span></label>}
+      <button type="submit" className="btn primary" style={{ width: '100%' }}>{mode === 'new' ? '[ Enrol, bru ]' : '[ Send my locker code ]'}</button>
+      {mode === 'new' ? door : full ? <button type="button" className="lk-door" onClick={() => swap('new')}>Never been? Enrol a new student.</button> : <a className="lk-door" href="#enrol/new">Never been? Enrol a new student.</a>}
+      {foot}
+    </form>
+  );
+}
+
+function EnrolNewScreen() {
+  return (
+    <div style={{ maxWidth: 680, margin: '0 auto', padding: 'clamp(24px, 5vw, 56px) 20px 96px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <a className="btn line sm" href="#enrol" style={{ alignSelf: 'flex-start' }}>Back to the desk</a>
+      <EnrolCard full />
+    </div>
+  );
+}
+
+function ProfileScreen() {
+  const me = useProfile();
+  const [learnt] = useStored('lsd2-learnt', []);
+  const [known] = useStored('lsd2-known', []);
+  const [packs] = useStored('lsd2-packs', []);
+  const [exam] = useStored('lsd2-exam', null);
+  const [myForks] = useStored('lsd2-myforks', 0);
+  const [sure, setSure] = React.useState(false);
+  const fl = useFluency();
+  if (!me) return null;
+  const L = window.LSD2.lessons;
+  const next = L.find(l => !learnt.includes(l.n)) || L[0];
+  const since = new Date(me.since).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' });
+  const del = () => {
+    if (!sure) { setSure(true); return; }
+    const p = lsGet('lsd2-profiles', {}); delete p[me.email];
+    LSD_SCOPED.forEach(k => { try { localStorage.removeItem(k + '@' + me.email); } catch (e) {} });
+    lsSet('lsd2-profiles', p); signOut(); location.hash = 'home';
+  };
+  const stats = [
+    ['Lessons learnt', learnt.length, L.length, learnt.length >= L.length ? 'All ' + L.length + '. Your accent has improved. Allegedly.' : 'Next up: Lesson ' + next.n + ', ' + next.w + '.', '#lessons/' + next.n, learnt.length ? 'Carry on' : 'Begin Lesson 1'],
+    ['Flashcards known', known.length, L.length, known.length ? 'Filed as known. The flashcards believe you.' : 'None yet. The cards are waiting. Patiently.', '#flashcards', 'Start flipping'],
+    ['Study pack saved', packs.length, PACKS_DL.length, packs.length >= PACKS_DL.length ? 'Ready for flight mode.' : 'For the flight in. Seat 14B will thank you.', '#study', 'Open the study pack'],
+  ];
+  return (
+    <div>
+      <PageHead index="11" kicker={'Student file · ' + me.no + ' · ' + fl.level.n} title={me.name}>
+        <p className="lead" style={{ margin: 0 }}>Enrolled {since}. Everything you’ve done is filed here. Gateway has not read it. Gateway has read it.</p>
+      </PageHead>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
+        {stats.map(([k, n, of, d, href, cta]) => (
+          <div key={k} className="card" style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <span className="lbl blue">{k}</span>
+            <div className="hl" style={{ fontSize: 'clamp(44px, 4vw, 64px)', fontVariantNumeric: 'tabular-nums' }}>{n === of ? <Sel>{pad2(n)}</Sel> : pad2(n)}<span className="muted" style={{ fontSize: '.5em' }}>{' / ' + of}</span></div>
+            <div className="bar" style={{ marginTop: 0 }}><i style={{ width: (n / of * 100) + '%' }}></i></div>
+            <p style={{ margin: 0, color: 'var(--ink-2)' }}>{d}</p>
+            <a className="btn line sm" href={href} style={{ alignSelf: 'flex-start', marginTop: 'auto' }}>{cta}</a>
+          </div>
+        ))}
+        <div className="card" style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <span className="lbl blue">Final exam</span>
+          <div className="hl" style={{ fontSize: 'clamp(44px, 4vw, 64px)', fontVariantNumeric: 'tabular-nums' }}>{exam ? (exam.best >= EXAM_PASS ? <Sel>{exam.best}</Sel> : exam.best) : '—'}<span className="muted" style={{ fontSize: '.5em' }}>{' / ' + EXAM_N}</span></div>
+          <p style={{ margin: 0, color: 'var(--ink-2)' }}>{!exam ? 'Not sat yet. The exam is aware of you.' : exam.best >= EXAM_PASS ? 'Passed. Certificate of Fluency on file.' : 'Best so far. Pass mark is ' + EXAM_PASS + '. The ocean is patient.'}</p>
+          <a className="btn line sm" href="#exam" style={{ alignSelf: 'flex-start', marginTop: 'auto' }}>{exam && exam.best >= EXAM_PASS ? 'See your certificate' : 'Go to the exam'}</a>
+        </div>
+        <div className="card" style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <span className="lbl blue">Forks confiscated by you</span>
+          <div className="hl" style={{ fontSize: 'clamp(44px, 4vw, 64px)', fontVariantNumeric: 'tabular-nums' }}>{myForks}</div>
+          <p style={{ margin: 0, color: 'var(--ink-2)' }}>{myForks ? 'Gateway thanks you for your service.' : 'No arrests on record. The bunny is exposed.'}</p>
+          <a className="btn line sm" href="#activities/game-08" style={{ alignSelf: 'flex-start', marginTop: 'auto' }}>Report for duty</a>
+        </div>
+      </div>
+      <div className="card" style={{ padding: 28, marginTop: 16, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8 }}><span className="lbl blue">Fluency ladder · everyone starts as a vaalie</span><FluencyLine /></div>
+        <FluencyLadder />
+      </div>
+      <div className="card between" style={{ padding: 28, marginTop: 16, flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><span className="lbl muted">Signed in as</span><b style={{ fontSize: 18 }}>{me.email}</b><span className="lbl muted">Saved on this device. Clear your browser and you clear your fluency.</span></div>
+        <div className="row">
+          <a className="btn line sm" href="#card">Print your student card</a>
+          <button type="button" className="btn line sm" onClick={() => { signOut(); location.hash = 'enrol'; }}>Switch student</button>
+          <button type="button" className="btn line sm" onClick={del}>{sure ? 'Sure? Click again. No refunds.' : 'Delete profile'}</button>
+          <button type="button" className="btn primary sm" onClick={() => { signOut(); location.hash = 'home'; }}>Log out</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { EnrolCard, EnrolNewScreen, ProfileScreen, useProfile, signOut, firstName, LockerCode });

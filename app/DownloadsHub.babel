@@ -1,0 +1,251 @@
+// Study pack downloads hub: the road kit. Printables open as their own A4 sheets (#study/n3, #study/padkos).
+const DL_G = "'Switzer', 'Helvetica Neue', Arial, sans-serif", DL_M = "'IBM Plex Mono', monospace";
+const DL = { blue: (window.LSD_PAL||{}).blue||'#0a63ff', hl: (window.LSD_PAL||{}).hl||'#cde0fb', ink: '#111111', paper: (window.LSD_PAL||{}).paper||'#efefed', muted: '#6e6e73' };
+const DL_WALL_WORDS = ['Aweh', 'Kiff', 'Shot', 'Vy', 'Smaak', 'Bru'];
+
+function dlMono(ctx, t, x, y, sz, col, al = 'left') { ctx.font = `500 ${sz}px ${DL_M}`; ctx.fillStyle = col; ctx.textAlign = al; ctx.letterSpacing = '2px'; ctx.fillText(t.toUpperCase(), x, y); ctx.letterSpacing = '0px'; ctx.textAlign = 'left'; }
+function dlWrap(ctx, text, max) { const out = []; let cur = ''; text.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (cur && ctx.measureText(t).width > max) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); return out; }
+function dlSave(canvas, name) { return new Promise(res => canvas.toBlob(b => { const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); res(); }, 'image/png')); }
+const dlFonts = () => Promise.all(['800 120px Switzer', '600 40px Switzer', "500 24px 'IBM Plex Mono'"].map(f => document.fonts.load(f))).catch(() => {});
+
+// Teams backgrounds, 1920 × 1080. Text sits in the corners: your head goes in the middle.
+function dlTeams(kind, logo) {
+  const c = document.createElement('canvas'); c.width = 1920; c.height = 1080; const ctx = c.getContext('2d');
+  if (kind === 'beach') {
+    const sky = ctx.createLinearGradient(0, 0, 0, 600); sky.addColorStop(0, '#f6f6f4'); sky.addColorStop(1, (window.LSD_PAL||{}).sky||'#dfe9fb'); ctx.fillStyle = sky; ctx.fillRect(0, 0, 1920, 600);
+    ctx.fillStyle = DL.blue; ctx.fillRect(0, 600, 1920, 230);
+    ctx.fillStyle = (window.LSD_PAL||{}).sea||'rgba(205,224,251,.55)'; [630, 672, 720, 776].forEach((y, i) => ctx.fillRect(0, y, 1920, 3 + i));
+    ctx.fillStyle = '#e8e3d7'; ctx.fillRect(0, 830, 1920, 250);
+    dlMono(ctx, 'Durban beachfront · 29.86° S, 31.02° E', 64, 1020, 22, DL.ink);
+    dlMono(ctx, 'Learn to Speak Durban', 1856, 1020, 22, DL.ink, 'right');
+  } else if (kind === 'gateway') {
+    ctx.fillStyle = DL.paper; ctx.fillRect(0, 0, 1920, 1080);
+    if (logo) { const lh = 150, lw = logo.width / logo.height * lh; ctx.drawImage(logo, 1920 - 72 - lw, 56, lw, lh); }
+    ctx.font = `800 64px ${DL_G}`; ctx.letterSpacing = '-2px'; ctx.fillStyle = DL.ink; ctx.fillText('Currently at Gateway, Durban.', 64, 980); ctx.letterSpacing = '0px';
+    dlMono(ctx, 'Learn to Speak Durban. A public service by Gateway.', 64, 1030, 20, DL.muted);
+  } else {
+    ctx.fillStyle = DL.blue; ctx.fillRect(0, 0, 1920, 1080);
+    dlMono(ctx, 'On leave soon, ekse', 1856, 1030, 22, '#fff', 'right');
+  }
+  return c;
+}
+
+// Phone wallpapers, 1080 × 1920. The word sits below the lock-screen clock.
+function dlWall(word) {
+  const L = window.LSD2.lessons, l = L.find(x => x.w === word) || L[0];
+  const c = document.createElement('canvas'); c.width = 1080; c.height = 1920; const ctx = c.getContext('2d');
+  ctx.fillStyle = DL.blue; ctx.fillRect(0, 0, 1080, 1920);
+  const X = 96, base = 1180;
+  dlMono(ctx, 'Lesson ' + l.n + ' · ' + l.p, X, base - 250, 30, DL.hl);
+  let fs = 230; ctx.font = `800 ${fs}px ${DL_G}`; ctx.letterSpacing = '-9px'; while (ctx.measureText(l.w).width > 1080 - 2 * X - 20 && fs > 120) { fs -= 10; ctx.font = `800 ${fs}px ${DL_G}`; }
+  const w = ctx.measureText(l.w).width, top = base - fs * 0.83, h = fs * 1.04;
+  ctx.fillStyle = DL.hl; ctx.fillRect(X - 10, top, w + 26, h);
+  ctx.fillStyle = '#fff'; ctx.fillRect(X - 13, top, 6, h); ctx.fillRect(X + w + 13, top, 6, h);
+  ctx.beginPath(); ctx.arc(X - 10, top - 10, 13, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(X + w + 16, top + h + 10, 13, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = DL.ink; ctx.fillText(l.w, X, base); ctx.letterSpacing = '0px';
+  ctx.font = `600 46px ${DL_G}`; ctx.fillStyle = '#fff'; dlWrap(ctx, '— ' + l.d, 1080 - 2 * X).slice(0, 4).forEach((t, i) => ctx.fillText(t, X, base + 150 + i * 60));
+  dlMono(ctx, 'Learn to Speak Durban', X, 1780, 24, '#fff'); dlMono(ctx, 'A public service by Gateway', X, 1820, 24, DL.hl);
+  return c;
+}
+
+// WhatsApp stickers, 512 × 512, transparent. The word, selected: highlight, blue handles, even gap from ink to handle.
+function dlSticker(word, size = 512) {
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = size; const ctx = c.getContext('2d'); ctx.scale(size / S, size / S);
+  const GAP = .12, LS = -.005, PADY = .06, MAXW = 400;
+  const box = F => { ctx.font = `800 ${F}px ${DL_G}`; ctx.letterSpacing = (LS * F) + 'px'; const m = ctx.measureText(word); const inkL = -m.actualBoundingBoxLeft; return { m, inkL, w: (m.actualBoundingBoxRight - inkL) + 2 * GAP * F }; };
+  let F = S * .30, b = box(F); if (b.w > MAXW) { F = F * MAXW / b.w; b = box(F); }
+  const asc = b.m.fontBoundingBoxAscent ?? F * .8, desc = b.m.fontBoundingBoxDescent ?? F * .2, h = F + 2 * PADY * F, x0 = (S - b.w) / 2, y0 = (S - h) / 2;
+  ctx.fillStyle = DL.hl; ctx.fillRect(x0, y0, b.w, h);
+  ctx.fillStyle = DL.ink; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText(word, x0 + GAP * F - b.inkL, y0 + PADY * F + (F - (asc + desc)) / 2 + asc);
+  const hw = Math.max(2, .035 * F), r = .08 * F, o = .01 * F, lx = x0 - o, rx = x0 + b.w + o - hw;
+  ctx.fillStyle = DL.blue; ctx.fillRect(lx, y0, hw, h); ctx.fillRect(rx, y0, hw, h);
+  ctx.beginPath(); ctx.arc(lx + hw / 2, y0 - .13 * F + r, r, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(rx + hw / 2, y0 + h + .13 * F - r, r, 0, Math.PI * 2); ctx.fill();
+  ctx.letterSpacing = '0px'; return c;
+}
+const dlBlob = (c, type, q) => new Promise(r => c.toBlob(r, type, q));
+async function dlStickerBlob(word) { const c = dlSticker(word); let b = await dlBlob(c, 'image/webp', 1); if (!b || b.type !== 'image/webp') b = await dlBlob(c, 'image/png'); return b; }
+const dlStickerName = (l, b) => 'ltsd-sticker-' + l.n + '-' + l.w.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.' + (b.type === 'image/webp' ? 'webp' : 'png');
+function dlSaveBlob(b, name) { const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 2000); }
+const dlZipLib = () => window.JSZip ? Promise.resolve(window.JSZip) : new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js'; s.onload = () => res(window.JSZip); s.onerror = rej; document.head.appendChild(s); });
+// All 50 in one zip: WhatsApp caps a pack at 30, so pack-1 (01–30) and pack-2 (31–50), each with its 96 × 96 tray icon.
+async function dlStickerZip() {
+  const L = window.LSD2.lessons; let Z; try { Z = await dlZipLib(); } catch (e) { Z = null; }
+  if (!Z) { for (let i = 0; i < L.length; i++) { const b = await dlStickerBlob(L[i].w); dlSaveBlob(b, dlStickerName(L[i], b)); await dlGap(); } return; }
+  const z = new Z();
+  for (const [i, l] of L.entries()) { const b = await dlStickerBlob(l.w); z.folder('pack-' + (i < 30 ? 1 : 2)).file(dlStickerName(l, b), b); }
+  for (const [p, i] of [[1, 0], [2, 30]]) if (L[i]) z.folder('pack-' + p).file('tray.png', await dlBlob(dlSticker(L[i].w, 96), 'image/png'));
+  dlSaveBlob(await z.generateAsync({ type: 'blob' }), 'ltsd-whatsapp-stickers.zip');
+}
+
+// Thumbnails for the Teams and wallpaper cards, plus the real file downloads.
+function useDlThumbs() {
+  const [st, setSt] = React.useState({ logo: null, thumbs: null });
+  React.useEffect(() => {
+    let live = true; const im = new Image();
+    const go = ok => dlFonts().then(() => { if (!live) return; const lg = ok ? im : null; setSt({ logo: lg, thumbs: { teams: ['beach', 'gateway', 'blue'].map(k => dlTeams(k, lg).toDataURL('image/jpeg', 0.6)), walls: DL_WALL_WORDS.map(w => dlWall(w).toDataURL('image/jpeg', 0.6)), stickers: window.LSD2.lessons.map(l => dlSticker(l.w, 96).toDataURL('image/png')) } }); });
+    im.onload = () => go(true); im.onerror = () => go(false); im.src = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png');
+    return () => { live = false; };
+  }, []);
+  return st;
+}
+// Browsers block a burst of downloads, so files go one at a time with a short gap. dlOne saves a single file (thumbnail click).
+const DL_TEAMS = [['beach', 'beachfront'], ['gateway', 'gateway'], ['blue', 'on-leave-soon']];
+const dlGap = () => new Promise(r => setTimeout(r, 900));
+async function dlOne(kind, i, logo) {
+  await dlFonts();
+  if (kind === 'stickers') { const l = window.LSD2.lessons[i], b = await dlStickerBlob(l.w); return dlSaveBlob(b, dlStickerName(l, b)); }
+  if (kind === 'teams') { const [k, n] = DL_TEAMS[i]; return dlSave(dlTeams(k, logo), 'ltsd-teams-' + n + '.png'); }
+  const w = DL_WALL_WORDS[i]; return dlSave(dlWall(w), 'ltsd-wallpaper-' + w.toLowerCase() + '.png');
+}
+async function dlFiles(kind, logo) {
+  if (kind === 'stickers') { await dlFonts(); return dlStickerZip(); }
+  const n = kind === 'teams' ? DL_TEAMS.length : DL_WALL_WORDS.length;
+  for (let i = 0; i < n; i++) { await dlOne(kind, i, logo); if (i < n - 1) await dlGap(); }
+}
+
+// ---- Printable sheets ----
+const N3_STOPS = [
+  { km: '0', at: 'Joburg', to: 'Heidelberg', from: 1, until: 6, line: 'Six words before the first petrol stop. Aweh to the highway.' },
+  { km: '≈ 115', at: 'Vaal River', lessons: ['17'], line: 'Lesson 17, obviously. The coast. One coast. Not the Vaal.' },
+  { km: '≈ 115–275', at: 'Villiers', to: 'Harrismith', from: 7, until: 22, skip: ['17'], line: 'The long flat bit. Fifteen words, one per cattle grid.' },
+  { km: '≈ 275', at: 'Harrismith', line: 'Halfway down the road. 22 words in. Pie break. Do not skip the pie break.', stop: true },
+  { km: '≈ 300', at: 'Van Reenen’s Pass', line: 'Revise. Lessons 01–22 on the way down the mountain. Gears low, vocabulary high.', stop: true },
+  { km: '≈ 300–450', at: 'Ladysmith', to: 'Mooi River', from: 23, until: 32, line: 'Ten words. The air gets thicker. That’s the humidity. It’s on your side.' },
+  { km: '≈ 450–540', at: 'Pietermaritzburg', to: 'Pinetown', from: 33, until: 50, line: 'The last eighteen. Fields Hill: say them out loud. Nobody can hear you over the brakes.' },
+  { km: '≈ 545', at: 'The tollgate arches', line: 'Fluent. Welcome home.', stop: true, end: true },
+];
+
+function SheetBar({ title, note = 'prints on one page' }) {
+  return (
+    <div className="sheet-bar no-print">
+      <a className="btn line sm" href="#study">← Back to the study pack</a>
+      <span className="lbl muted">{title + ' · A4 · ' + note}</span>
+      <button type="button" className="btn primary sm" onClick={() => window.print()}>[ Print ]</button>
+    </div>
+  );
+}
+
+function N3Sheet() {
+  const L = window.LSD2.lessons;
+  const words = s => s.lessons ? L.filter(l => s.lessons.includes(l.n)) : s.from ? L.filter(l => +l.n >= s.from && +l.n <= s.until && !(s.skip || []).includes(l.n)) : [];
+  return (
+    <div className="sheet-wrap">
+      <SheetBar title="The N3 Syllabus" />
+      <div className="a4">
+        <div className="between lbl"><span className="blue">KIT-01 · Learn by landmark</span><span className="muted">Joburg → Durban · ≈ 570 km</span></div>
+        <h1 className="hl a4-h">The N3 <Sel>Syllabus.</Sel></h1>
+        <p className="a4-lead">A study plan keyed to the drive. Tick each stop as you pass it. Passenger seat only. The driver is studying the road.</p>
+        <div className="n3-route">
+          {N3_STOPS.map((s, i) => { const w = words(s); return (
+            <div key={i} className={'n3-stop' + (s.stop ? ' pin' : '') + (s.end ? ' end' : '')}>
+              <span className="lbl muted">{'KM ' + s.km}</span>
+              <span className="n3-box"></span>
+              <div className="n3-body">
+                <div className="n3-at">{s.at}{s.to ? ' → ' + s.to : ''}{w.length ? <span className="lbl blue">{w.length === 1 ? '  Lesson ' + w[0].n : '  Lessons ' + w[0].n + '–' + w[w.length - 1].n}</span> : null}</div>
+                <div className="n3-line">{s.end ? <Sel>{s.line}</Sel> : s.line}</div>
+                {w.length > 0 && <div className="n3-words">{w.map(l => l.w).join(' · ')}</div>}
+              </div>
+            </div>
+          ); })}
+        </div>
+        <div className="a4-foot"><span className="lbl">Learn to Speak Durban. A public service by Gateway.</span><span className="lbl muted">learntospeakdurban.com</span></div>
+      </div>
+    </div>
+  );
+}
+
+// AUNTIES AGAINST EVERYONE (the home edition). Rules page, prompt sheets (6 per A4, a cover card first), answer sheets (8 per A4), and one back sheet each.
+// #study/aunties/print opens the sheets and fires the print dialog once fonts and images are in. #study/aunties/print-bw does the same in black and white.
+// Black & white: no solid fills anywhere (frames instead of orange/ink grounds, outlined highlights, black logos) so it runs on toner, not budget.
+const NL_BW_LINE = 'For the office printer, on the office’s toner. Consider it a leave-day bonus.';
+const NL_RULES = [
+  '3+ players. Deal 7 answer cards each.',
+  'One player is The Auntie — her judging is final and unjust.',
+  'The Auntie reads a prompt card. Everyone else plays an answer card face down.',
+  'She reads them aloud, dramatically, and crowns the funniest. Winner keeps the prompt.',
+  'New round, new Auntie.',
+  'First to 5 prompts is FLUENT and must be called ‘mfethu’ by everyone for the rest of the day.',
+  'THE EKSE CARD is wild — it fits any blank, but you must say the full sentence out loud, with confidence.',
+  'Disputes are settled by the Auntie. There is no higher court.',
+];
+const nlChunks = (a, n) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
+const nlBlank = t => t.split('____').map((p, i, arr) => i < arr.length - 1 ? <React.Fragment key={i}>{p}<span className="nl-blank"></span></React.Fragment> : <React.Fragment key={i}>{p}</React.Fragment>);
+
+function NoLakaSheets() {
+  const C = window.NOLAKA || { prompts: [], answers: [] };
+  const LOGO = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png'), LOGO_W = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo-white.png');
+  const answers = [...C.answers.map(t => ({ t })), { t: 'Ekse.', wild: true }];
+  const P = nlChunks([{ cover: true, n: 0 }, ...C.prompts.map((t, i) => ({ t, n: i + 1 }))], 6), A = nlChunks(answers.map((x, i) => ({ ...x, n: i + 1 })), 8);
+  const [bw, setBw] = React.useState(() => /\/print-bw$/.test(location.hash) || (() => { try { return sessionStorage.getItem('lsd2-aae-bw') === '1'; } catch (e) { return false; } })());
+  const pickBw = v => { setBw(v); try { sessionStorage.setItem('lsd2-aae-bw', v ? '1' : '0'); } catch (e) {} };
+  React.useEffect(() => {
+    if (!/\/print(-bw)?$/.test(location.hash)) return;
+    history.replaceState(null, '', '#study/aunties');
+    const imgs = [...document.querySelectorAll('.nl-scroll img')].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })).filter(Boolean);
+    let t; Promise.all([document.fonts ? document.fonts.ready : null, ...imgs]).then(() => { t = setTimeout(() => window.print(), 400); });
+    return () => clearTimeout(t);
+  }, []);
+  const pages = 1 + P.length + A.length + 2;
+  const Top = ({ k, i, of }) => <div className="nl-top"><div className="nl-top-r"><LtsdLock /><span className="lbl">Aunties Against Everyone · the home edition</span></div><div className="lbl nl-cap">{k + (of ? ' · sheet ' + i + ' / ' + of : '') + ' · Print on A4 at 100% · cut along the dashes · argue at the table'}</div></div>;
+  const Foot = () => <div className="nl-foot"><span className="lbl muted">learntospeakdurban.com</span><span className="lbl muted">REF: LTSD-2026 · Study pack · PACK-10</span></div>;
+  const Mark = ({ white, no }) => <LtsdSign light={white} no={no} />, NP = C.prompts.length;
+  return (
+    <div className={'sheet-wrap' + (bw ? ' nl-bw' : '')}>
+      <div className="sheet-bar no-print">
+        <a className="btn line sm" href="#study">← Back to the study pack</a>
+        <span className="lbl muted">{'Aunties Against Everyone · ' + (bw ? 'black & white · ' : '') + pages + ' A4 pages · 1 cover card · ' + C.prompts.length + ' prompts · ' + answers.length + ' answers'}</span>
+        <div className="row" style={{ gap: 8 }}><div className="nl-ink" role="group" aria-label="Print in"><button type="button" className={'chip' + (!bw ? ' on' : '')} aria-pressed={!bw} onClick={() => pickBw(false)}>Colour</button><button type="button" className={'chip' + (bw ? ' on' : '')} aria-pressed={bw} onClick={() => pickBw(true)}>Black & white</button></div><button type="button" className="btn primary sm" onClick={() => window.print()}>[ Print the deck ]</button></div>
+      </div>
+      {bw && <div className="sheet-bar no-print"><span className="lbl blue lt-note" key="bw">{'Black & white edition · ' + NL_BW_LINE}</span></div>}
+      <div className="nl-scroll">
+        <div className="a4 nl-page nl-rules">
+          <div className="nl-cover">
+            <div className="between lbl"><span>Learn to Speak Durban · Study pack · PACK-10</span><img src={LOGO_W} alt="Gateway" /></div>
+            <h1 className="hl" style={{ fontSize: 66 }}>Aunties Against<br /><Sel>Everyone.</Sel></h1>
+            <p>{bw ? 'The home edition, black and white. Print, cut, argue.' : 'The home edition. Print, cut, argue.'}</p>
+            {bw && <span className="nl-bw-line">{NL_BW_LINE}</span>}
+            <div className="lbl">{'3+ players · ' + C.prompts.length + ' prompts · ' + C.answers.length + ' answers · 1 Ekse card'}</div>
+          </div>
+          <div className="lbl blue" style={{ marginTop: 6 }}>How to play</div>
+          <ol className="nl-steps">{NL_RULES.map((r, i) => <li key={r}><b>{pad2(i + 1)}</b><span>{r}</span></li>)}</ol>
+          <div className="nl-box">
+            <span className="lbl blue">Printing</span>
+            <span>Print on A4. For proper card backs, print the two back sheets on the reverse of the prompt and answer sheets. Cut along the dashes. The Auntie won’t check. She will judge.</span>
+          </div>
+          <Foot />
+        </div>
+        {P.map((pg, i) => (
+          <div key={'p' + i} className="a4 nl-page">
+            <Top k="Prompt cards" i={i + 1} of={P.length} />
+            <div className="nl-grid p">{pg.map(c => c.cover
+              ? <div key="cover" className="nl-card cover"><span className="lbl nl-k">The home edition</span><div className="hl nl-cover-t">Aunties Against <Sel>Everyone.</Sel></div><p className="nl-cover-p">Print, cut, argue. An actual auntie improves the experience but is not included.</p><Mark white /></div>
+              : <div key={c.n} className="nl-card prompt"><span className="lbl nl-k">Prompt</span><div className="nl-t">{nlBlank(c.t)}</div><Mark white no={ltsdNo(c.n - 1)} /></div>)}</div>
+            <Foot />
+          </div>
+        ))}
+        {A.map((pg, i) => (
+          <div key={'a' + i} className="a4 nl-page">
+            <Top k="Answer cards" i={i + 1} of={A.length} />
+            <div className="nl-grid a">{pg.map(c => c.wild
+              ? <div key={c.n} className="nl-card ekse"><span className="lbl nl-k">Wild card</span><div className="nl-t"><Sel>Ekse.</Sel></div><div className="nl-wild">Fits any blank. Say the full sentence out loud, with confidence.</div><Mark no="Dial 031 for assistance" /></div>
+              : <div key={c.n} className="nl-card answer"><div className="nl-t">{c.t}</div><Mark no={ltsdNo(NP + c.n - 1)} /></div>)}</div>
+            <Foot />
+          </div>
+        ))}
+        <div className="a4 nl-page">
+          <Top k="Prompt card backs · print on the reverse" />
+          <div className="nl-grid p">{[0, 1, 2, 3, 4, 5].map(i => <div key={i} className="nl-card prompt back"><LtsdLock light center /><LtsdWave /></div>)}</div>
+          <Foot />
+        </div>
+        <div className="a4 nl-page">
+          <Top k="Answer card backs · print on the reverse" />
+          <div className="nl-grid a">{[0, 1, 2, 3, 4, 5, 6, 7].map(i => <div key={i} className="nl-card answer back"><LtsdLock center /><LtsdWave /></div>)}</div>
+          <Foot />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { useDlThumbs, dlFiles, dlOne, DL_WALL_WORDS, N3Sheet, NoLakaSheets });

@@ -1,0 +1,104 @@
+// Shared primitives for microsite v2. No icons: type, highlight and handles only.
+const pad2 = n => String(n).padStart(2, '0');
+
+function Sel({ children, on = true, handles = true, className = '', ...rest }) {
+  return <span className={'sel' + (on ? ' on' : '') + (className ? ' ' + className : '')} {...rest}>{children}{on && handles && <><i className="h l"></i><i className="h r"></i></>}</span>;
+}
+
+// Dark edit menu. With onPick the items are buttons; without, plain labels (safe inside links).
+function Pop({ items, active = 0, onPick, place = 'above' }) {
+  return (
+    <span className={'pop ' + place} onClick={onPick ? e => { e.preventDefault(); e.stopPropagation(); } : undefined}>
+      {items.map((a, i) => onPick
+        ? <button key={i} type="button" className={'pi' + (i === active ? ' on' : '')} onClick={e => { e.preventDefault(); e.stopPropagation(); onPick(a, i); }}>{a}</button>
+        : <span key={i} className={'pi' + (i === active ? ' on' : '')}>{a}</span>)}
+    </span>
+  );
+}
+
+function LookUp({ l, size = 'md', style, className = '', children }) {
+  return (
+    <div className={'card lookup ' + size + (className ? ' ' + className : '')} style={style}>
+      <div className="lbl lk-top"><span className="blue">Look Up · LTSD-{l.n}</span><span className="muted">{l.n + ' / ' + window.LSD2.lessons.length}</span></div>
+      <div className="hl lk-w">{l.w}</div>
+      <div className="lk-pos">({l.p})</div>
+      <div className="lk-d">— {l.d}</div>
+      <div className="lbl lk-eg">E.g.</div>
+      <div className="lk-e">{l.e ? '“' + l.e + '”' : <span className="muted">Line in development. The writers are at the beach.</span>}</div>
+      {children}
+    </div>
+  );
+}
+
+function PageHead({ kicker, index, title, children }) {
+  const words = title.split(' ');
+  const last = words.pop();
+  return (
+    <div className="ph">
+      <div className="row"><span className="pill lbl">{index}</span><span className="lbl muted">{kicker}</span></div>
+      <h1 className="hl">{words.length ? words.join(' ') + ' ' : ''}<Sel>{last}</Sel></h1>
+      {children}
+    </div>
+  );
+}
+
+// Motion helpers. CSS does the animating; these only decide when. Reduced motion: values jump, nothing moves.
+const ltReduced = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+// Departure-board digits: a changed character remounts (new key) and slides in. Unchanged ones stay put.
+function Flip({ v }) { return <span className="fl">{String(v).split('').map((c, i) => <span key={i + ':' + c}>{c}</span>)}</span>; }
+// Header marks chip: counts up to the new total and pulses once when marks are earned.
+function MarksChip({ total }) {
+  const [d, setD] = React.useState(total), [n, setN] = React.useState(0), from = React.useRef(total);
+  React.useEffect(() => {
+    const a = from.current; from.current = total;
+    if (total <= a || ltReduced()) { setD(total); if (total > a) setN(x => x + 1); return; }
+    setN(x => x + 1); let raf; const t0 = performance.now(), D = 600;
+    const f = now => { const k = Math.min(1, (now - t0) / D); setD(Math.round(a + (total - a) * (1 - Math.pow(1 - k, 3)))); if (k < 1) raf = requestAnimationFrame(f); };
+    raf = requestAnimationFrame(f); return () => cancelAnimationFrame(raf);
+  }, [total]);
+  return <a key={n} href="#leaderboard" className={'hdr-marks' + (n ? ' lt-pulse' : '')} title="Your total game marks">Marks <b>{ptsFmt(d)}</b></a>;
+}
+
+// Campaign furniture, copied from CampaignAssets Orange: the wave (exact path, #lsdWave) and the lockup (wordmark with its kerning nudges + tagline + Gateway mark).
+const LTSD_WAVE_D = 'M458.52,261.53c-.01-.26,0-.51,0-.77-.93.12-1.86.18-2.8.18-7.23,0-14.02-3.55-19.12-9.99l-1.69-2.14c-5.37-6.8-12.56-10.55-20.24-10.55s-14.87,3.75-20.25,10.55l-1.69,2.14c-5.09,6.44-11.88,9.99-19.11,9.99s-14.02-3.55-19.12-10l-1.69-2.13c-5.37-6.8-12.56-10.55-20.24-10.55s-14.87,3.75-20.25,10.55l-1.69,2.14c-5.09,6.44-11.88,9.99-19.11,9.99s-14.02-3.55-19.11-9.99l-1.69-2.14c-5.37-6.8-12.56-10.55-20.24-10.55s-14.87,3.75-20.25,10.55l-1.68,2.13c-5.1,6.45-11.88,10-19.11,10s-14.02-3.55-19.11-10l-1.69-2.13c-5.37-6.8-12.56-10.54-20.24-10.54s-14.87,3.74-20.25,10.54l-1.68,2.14c-5.1,6.44-11.89,9.99-19.12,9.99s-14.02-3.55-19.11-9.99l-1.69-2.14c-5.37-6.8-12.56-10.55-20.24-10.55s-14.87,3.75-20.25,10.55l-1.68,2.14c-5.1,6.44-11.89,9.99-19.12,9.99-1.27,0-2.52-.11-3.76-.33-.24.44-.49.89-.74,1.33,1.48.29,2.98.45,4.5.45h0c7.69,0,14.88-3.75,20.25-10.55l1.69-2.14c5.09-6.44,11.88-9.99,19.11-9.99s14.02,3.55,19.11,9.99l1.69,2.14c5.37,6.8,12.56,10.55,20.24,10.55s14.87-3.75,20.25-10.55l1.68-2.14c5.1-6.44,11.89-9.99,19.12-9.99s14.01,3.55,19.11,10l1.68,2.13c5.38,6.8,12.57,10.54,20.25,10.54s14.87-3.74,20.24-10.54l1.69-2.13c5.09-6.45,11.88-10,19.11-10s14.02,3.55,19.11,9.99l1.69,2.14c5.37,6.8,12.56,10.55,20.24,10.55s14.87-3.75,20.25-10.55l1.68-2.14c5.1-6.44,11.89-9.99,19.12-9.99s14.02,3.55,19.11,10l1.69,2.13c5.38,6.8,12.57,10.55,20.25,10.55s14.87-3.75,20.24-10.55l1.69-2.14c5.1-6.44,11.89-9.99,19.12-9.99s14.02,3.55,19.11,9.99l1.69,2.14c5.38,6.8,12.57,10.55,20.25,10.55q1.43,0,2.84-.18C458.55,261.98,458.53,261.76,458.52,261.53Z';
+function LtsdWave({ className = '' }) { return <svg className={'lt-wave' + (className ? ' ' + className : '')} viewBox="40.5 238 418.3 24.6" aria-hidden="true"><path d={LTSD_WAVE_D}></path></svg>; }
+function LtsdLock({ light, center }) {
+  return (
+    <div className={'lt-lock' + (light ? ' lt' : '') + (center ? ' c' : '')}>
+      <span className="lt-lock-t"><span className="lt-lkm">Lear<span className="k">n</span> to sp<span className="k">e</span><span className="k">a</span>k <Sel>Dur<span className="k">b</span>an.</Sel></span><span className="lt-tg">A public service by Gateway</span></span>
+      <img src={LSD_RES(window.LSD_ASSETS + (light ? 'logos/gateway-logo-white.png' : 'logos/gateway-logo.png'))} alt="Gateway" />
+    </div>
+  );
+}
+// Card footer: wave just above the lockup. light = on orange / ink cards.
+// no = the card's footer mono line. Aunties cards are numbered from Nº 031 (Durban's dialling code), never 001.
+function LtsdSign({ light, no }) { return <div className={'lt-sign' + (light ? ' lt' : '')}>{no ? <div className="lt-wrow"><LtsdWave /><span className="lt-no">{no}</span></div> : <LtsdWave />}<LtsdLock light={light} /></div>; }
+const ltsdNo = i => 'Nº ' + String(31 + i).padStart(3, '0'); // i = 0-based position in the deck: prompts first, then answers
+// The 031 maker's mark. Identical wording everywhere, mono, footnote size, caption grey. Never orange, never a headline.
+const LTSD_SLUG = 'Born in the 031';
+
+// Progress keys are saved per student profile (key@email). Guests use the bare key.
+const LSD_SCOPED = ['lsd2-learnt', 'lsd2-known', 'lsd2-packs', 'lsd2-name', 'lsd2-exam', 'lsd2-myforks', 'lsd2-points', 'lsd2-durdle', 'lsd2-level', 'lsd2-title', 'lsd2-cardno', 'lsd2-favword', 'lsd2-lostfound', 'lsd2-deckchair', 'lsd2-vouchers', 'lsd2-origin'];
+const lsdKey = key => { if (!LSD_SCOPED.includes(key)) return key; try { const s = JSON.parse(localStorage.getItem('lsd2-session')); return s ? key + '@' + s : key; } catch (e) { return key; } };
+try { if (!JSON.parse(localStorage.getItem('lsd2-session'))) localStorage.setItem('lsd2-enrolled', 'false'); } catch (e) {}
+
+function useStored(key, init) {
+  const [v, setV] = React.useState(() => { try { const s = localStorage.getItem(lsdKey(key)); return s ? JSON.parse(s) : init; } catch (e) { return init; } });
+  const set = x => setV(prev => { const n = typeof x === 'function' ? x(prev) : x; try { localStorage.setItem(lsdKey(key), JSON.stringify(n)); } catch (e) {} setTimeout(() => window.dispatchEvent(new CustomEvent('lsd2-store', { detail: { key, n } })), 0); return n; });
+  React.useEffect(() => { const f = e => { if (e.detail.key === key) setV(e.detail.n); }; addEventListener('lsd2-store', f); return () => removeEventListener('lsd2-store', f); }, [key]);
+  return [v, set];
+}
+
+function useCopy() {
+  const [copied, setCopied] = React.useState(false);
+  const copy = text => { try { navigator.clipboard && navigator.clipboard.writeText(text).catch(() => {}); } catch (e) {} setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  return [copied, copy];
+}
+
+const todayIndex = () => { const d = new Date(); return Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 864e5) % window.LSD2.lessons.length; };
+
+// Language filter note under any free-text field (strict mode).
+// PRODUCTION: route all free text through a server-side moderation API (e.g. OpenAI Moderation / Azure AI Content Safety) PLUS this custom SA wordlist before rendering. Client-side filtering is a placeholder and must not ship as the only defence. Shareable text and Submit a word entries should also be human-reviewed where feasible.
+function BlockNote({ v, msg = 'Not that word, bru.' }) { return window.lsdBlocked && window.lsdBlocked(v) ? <span className="lbl blue">{msg}</span> : null; }
+
+Object.assign(window, { BlockNote, pad2, Sel, Pop, LookUp, PageHead, useStored, useCopy, todayIndex, Flip, MarksChip, ltReduced, LTSD_WAVE_D, LtsdWave, LtsdLock, LtsdSign, ltsdNo, LTSD_SLUG });

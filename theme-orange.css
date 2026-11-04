@@ -1,0 +1,11 @@
+/* Orange reskin — matches CampaignAssets Orange.html. Always linked; only applies under html[data-theme=orange]. */
+html[data-theme=orange]{--blue:#E8571E;--blue-2:#C9440F;--accent:#E8571E;--highlight:#FCD5BE;--highlight-2:#F9BE9B;--popover-on:#FFB48F;--paper:#f4f0ea;--paper-3:#e9e3da;--paper-4:#dbd3c7;--grid-line:#e6dfd4;--grid-dot:#d8cfc2}
+html[data-theme=orange] body{background:var(--paper) linear-gradient(#f8f5f0,#ebe5dc 1100px) no-repeat}
+html[data-theme=orange] .ng-pause{background:rgba(244,240,234,.94)}
+html[data-theme=orange] .scrim{background:rgba(244,240,234,.6)}
+html[data-theme=orange] .drop:hover,html[data-theme=orange] .drop.on{background:#fffaf6}
+html[data-theme=orange] .idc-hot:hover,html[data-theme=orange] .idc-hot:focus-visible{background:rgba(232,87,30,.05)}
+html[data-theme=orange] .kc-arm{background:repeating-linear-gradient(90deg,#E8571E 0 5px,#C9440F 5px 8px)}
+html[data-theme=orange] .kc-slot-t{background:rgba(232,87,30,.08)}
+html[data-theme=orange] .kc-blk.on{box-shadow:0 0 0 3px rgba(232,87,30,.3)}
+html[data-theme=orange] .vc-burst i:nth-child(odd){background:var(--highlight-2)}

@@ -1,0 +1,217 @@
+// The dailies: Lost & Found (wordsearch) and The Deck Chair (mini crossword).
+// Both are seeded by the local date, so every player gets the same puzzle. One scored go per day; finishing locks the day,
+// refreshing resumes (the clock keeps running), and a new puzzle arrives at midnight. Same rules as Durdle.
+const dgDay = () => { const d = new Date(); return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); };
+const dgHash = s => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+const dgRng = seed => () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const dgShuffle = (a, r) => { const o = [...a]; for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; } return o; };
+const dgTime = s => Math.floor(s / 60) + ':' + pad2(Math.floor(s % 60));
+const dgBonus = (secs, full, zero, max) => Math.round(max * Math.max(0, Math.min(1, (zero - secs) / (zero - full))));
+function useDgClock(start, end) {
+  const [, tick] = React.useState(0);
+  React.useEffect(() => { if (!start || end) return; const t = setInterval(() => tick(x => x + 1), 500); return () => clearInterval(t); }, [start, end]);
+  return start ? Math.max(0, Math.round(((end || Date.now()) - start) / 1000)) : 0;
+}
+function DgReady({ kicker, title, line, cta, onGo, id }) {
+  return <div className="ng-pause" style={{ position: 'relative', inset: 'auto', minHeight: 360, borderRadius: 18, cursor: 'default' }}><span className="lbl blue">{kicker}</span><div className="hl" style={{ fontSize: 'clamp(36px, 4vw, 56px)' }}>{title}</div><p className="lead" style={{ margin: 0, maxWidth: 520 }}>{line}</p><HowCards id={id} /><button type="button" className="btn primary" onClick={onGo}>{cta}</button><ChallengeBtn id={id} /></div>;
+}
+
+// ── LOST & FOUND ── 12 × 12, 8 dictionary words in any direction. Clues are meanings, not words.
+// Marks: 100 per word found. All eight found: + up to 200 for speed (full under 2:00, nothing after 10:00).
+function lfPuzzle(day) {
+  const r = dgRng(dgHash('lostfound:' + day)), N = 12;
+  const pool = dgShuffle(window.LSD2.lessons.map(l => ({ l, w: l.w.toUpperCase().replace(/[^A-Z]/g, '') })).filter(x => x.w.length >= 3 && x.w.length <= 11), r);
+  const g = Array(N * N).fill(null), dirs = [[0, 1], [1, 0], [1, 1], [-1, 1], [0, -1], [-1, 0], [-1, -1], [1, -1]], words = [];
+  for (const x of pool) {
+    if (words.length === 8) break;
+    if (words.some(p => p.w.includes(x.w) || x.w.includes(p.w))) continue;
+    for (let t = 0; t < 300; t++) {
+      const [dr, dc] = dirs[Math.floor(r() * 8)], r0 = Math.floor(r() * N), c0 = Math.floor(r() * N), n = x.w.length;
+      const re = r0 + dr * (n - 1), ce = c0 + dc * (n - 1); if (re < 0 || re >= N || ce < 0 || ce >= N) continue;
+      let ok = true; for (let i = 0; i < n; i++) { const ch = g[(r0 + dr * i) * N + c0 + dc * i]; if (ch && ch !== x.w[i]) { ok = false; break; } }
+      if (!ok) continue;
+      const cells = []; for (let i = 0; i < n; i++) { const k = (r0 + dr * i) * N + c0 + dc * i; g[k] = x.w[i]; cells.push(k); }
+      words.push({ ...x, cells }); break;
+    }
+  }
+  const FILL = 'EEEEAAAIIIOOUNNNRRSSSTTTLLKKHHDBMPCGYWV';
+  for (let i = 0; i < g.length; i++) if (!g[i]) g[i] = FILL[Math.floor(r() * FILL.length)];
+  return { N, grid: g, words: dgShuffle(words, r) };
+}
+
+function LostFoundGame() {
+  const [day] = React.useState(dgDay);
+  const P = React.useMemo(() => lfPuzzle(day), [day]);
+  const [saved, setSaved] = useStored('lsd2-lostfound', null);
+  const [entered, setEntered] = React.useState(false);
+  const st = saved && saved.day === day ? saved : { day, found: [], cells: [], start: null, end: null };
+  const save = patch => setSaved({ ...st, ...patch });
+  const secs = useDgClock(st.start, st.end);
+  const [sel, setSel] = React.useState(null);
+  const drag = React.useRef(null);
+  const done = !!st.end, N = P.N;
+  const line = sel ? (() => {
+    const ra = Math.floor(sel.a / N), ca = sel.a % N; let dy = Math.floor(sel.b / N) - ra, dx = sel.b % N - ca;
+    if (!(dy === 0 || dx === 0 || Math.abs(dy) === Math.abs(dx))) { if (Math.abs(dy) > 2 * Math.abs(dx)) dx = 0; else if (Math.abs(dx) > 2 * Math.abs(dy)) dy = 0; else { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx) * m; dy = Math.sign(dy) * m; } }
+    const n = Math.max(Math.abs(dx), Math.abs(dy)), sy = Math.sign(dy), sx = Math.sign(dx), out = [];
+    for (let i = 0; i <= n; i++) { const rr = ra + sy * i, cc = ca + sx * i; if (rr < 0 || cc < 0 || rr >= N || cc >= N) break; out.push(rr * N + cc); }
+    return out;
+  })() : [];
+  const finish = (found, cells) => save({ found, cells, end: Date.now() });
+  const reveal = () => save({ end: Date.now(), revealed: true });
+  const release = () => {
+    if (!drag.current) return; drag.current = null;
+    const s = line.map(i => P.grid[i]).join(''), rs = [...s].reverse().join('');
+    const w = P.words.find(x => !st.found.includes(x.w) && (x.w === s || x.w === rs));
+    if (w) { const found = [...st.found, w.w], cells = [...st.cells, ...line]; if (found.length === P.words.length) finish(found, cells); else save({ found, cells }); }
+    setSel(null);
+  };
+  React.useEffect(() => {
+    const mv = e => { if (!drag.current) return; const el = document.elementFromPoint(e.clientX, e.clientY); const i = el && el.dataset && el.dataset.lf; if (i != null) setSel(s => s && { ...s, b: +i }); };
+    const up = () => release();
+    addEventListener('pointermove', mv); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+    return () => { removeEventListener('pointermove', mv); removeEventListener('pointerup', up); removeEventListener('pointercancel', up); };
+  });
+  const all = st.found.length === P.words.length;
+  const score = st.revealed ? 0 : st.found.length * 100 + (all ? dgBonus(secs, 120, 600, 200) : 0);
+  if (!entered && st.start) return <DgReady id="game-12" kicker={'Lost & Found · ' + day + ' · ' + (st.end ? 'done for today' : 'clock still running')} title={<>Eight words, <Sel>lost.</Sel></>} line={st.end ? 'You’ve had your go today. Here’s how it works, for tomorrow.' : 'You started this one already. The clock didn’t wait.'} cta={st.end ? '[ See today’s result ]' : '[ Carry on ]'} onGo={() => setEntered(true)} />;
+  if (!st.start) return <DgReady id="game-12" kicker={'Lost & Found · ' + day + ' · 8 words'} title={<>Eight words, <Sel>lost.</Sel></>} line="The clues only tell you what they mean. Find the word in the letters, drag across it. Any direction. The clock starts when you do." cta="[ Start looking ]" onGo={() => save({ start: Date.now() })} />;
+  const missCells = done ? P.words.filter(w => !st.found.includes(w.w)).flatMap(w => w.cells) : [];
+  return (
+    <div className="dg-wrap">
+      <div className="dg-board">
+        <div className="between lbl"><span className="blue">{'Found ' + st.found.length + ' / ' + P.words.length}</span><span className="muted">{(done ? 'Finished in ' : 'Clock ') + dgTime(secs)}</span></div>
+        <div className={'lf-grid' + (done ? ' done' : '')} style={{ gridTemplateColumns: 'repeat(' + N + ', minmax(0, 1fr))' }} onPointerDown={e => { if (done) return; const i = e.target.dataset && e.target.dataset.lf; if (i == null) return; e.preventDefault(); drag.current = true; setSel({ a: +i, b: +i }); }}>
+          {P.grid.map((ch, i) => <span key={i} data-lf={i} className={'lf-c' + (line.includes(i) ? ' sel' : st.cells.includes(i) ? ' found' : missCells.includes(i) ? ' miss' : '')}>{ch}</span>)}
+        </div>
+        {!done && <div className="row"><button type="button" className="btn line sm" onClick={() => finish(st.found, st.cells)}>Hand it in</button><span className="lbl muted">One go a day. Handing in locks today.</span></div>}
+        {!done && <RevealBtn id="game-12" daily onReveal={reveal} />}
+      </div>
+      <div className="dg-clues">
+        <span className="lbl muted">The clues · meanings only</span>
+        <ol className="lf-clues">{P.words.map(w => { const got = st.found.includes(w.w); return <li key={w.w} className={got ? 'got' : done ? 'missed' : ''}><span>{w.l.d.charAt(0).toUpperCase() + w.l.d.slice(1).replace(/\.$/, '') + ' (' + w.w.length + ')'}</span>{(got || done) && <b>{w.l.w}</b>}</li>; })}</ol>
+        {done && <ScoreBanner id="game-12" pts={score} revealed={st.revealed ? (m => ({ answer: m.join(', '), plural: m.length !== 1 }))(P.words.filter(w => !st.found.includes(w.w)).map(w => w.l.w)) : null} share={{ no: ltsdDailyNo(), kicker: 'No. ' + ltsdDailyNo(), found: st.found.length, label: 'Words found', big: st.found.length + '/8', unit: 'found.', sub: 'Eight words, lost in the letters. No spoilers. New letters at midnight.' }} line={st.found.length + ' × 100' + (all ? ' + ' + dgBonus(secs, 120, 600, 200) + ' for speed' : '') + '. New letters at midnight.'} />}
+      </div>
+    </div>
+  );
+}
+
+// ── THE DECK CHAIR ── 7 × 7 mini crossword, built fresh each day from the pool below. 6–9 answers.
+// Marks: 700 for handing it in + up to 300 for speed (full under 1:30, nothing after 10:00) − 25 per wrong or empty letter. Floor 100.
+const DC_POOL = [
+  ['SHOT', 'Thank you, wearing slops'], ['KIFF', 'A warm ocean is this. A heated pool is a bath with admin'], ['JOL', 'Durban doesn’t go looking for it. Durban is it'], ['VY', 'Leave. Ideally Joburg, ideally Dezemba'],
+  ['AWEH', 'Hello, or happy agreement'], ['EKSE', '“I say,” said with chest'], ['GQOM', 'The music Durban invented'], ['BUNNY', 'Curry in a hollowed half-loaf'], ['BRU', 'Brother, or anyone within earshot'],
+  ['POZI', 'Home, ideally near the beach'], ['TOPS', 'Awesome. Also rad, sick, gnarly'], ['YANO', 'Amapiano, usually from a Polo'], ['PARK', 'To chill. Not at Zoo Lake'], ['SKIT', 'Dance. Famous last words: “I don’t really ___”'],
+  ['CHOW', 'Eat, ideally prawns that saw the ocean this morning'], ['KOOK', 'All the gear, no idea'], ['PRAWN', 'Someone spending Dezemba at the Vaal'], ['ROBOT', 'Traffic light with an ocean view'], ['SMAAK', 'To like, minus the LinkedIn'],
+  ['DALA', 'Do what you must'], ['LAATIE', 'A kid who hasn’t touched the ocean. Yet'], ['VAALIE', 'Packs for Durban like it has weather'], ['OUENS', 'Guys. Five minutes away. Haven’t left'], ['CHECK', 'Look at. Now do the ocean temperature'],
+  ['PERATO', 'The load-bearing bottom of a bunny'], ['MFETHU', 'My brother, in isiZulu'], ['LARNEY', 'Fancy. Relax, the dress code is baggies'], ['CHOON', 'Tell, with a bit of chest'], ['BAGGIES', 'Board shorts. The whole packing list'],
+  ['LOGGING', 'Longboarding at dawn'], ['NO LAKA', 'The “no” is ceremonial'], ['ONE TIME', 'Absolutely, bru'], ['HARTIES', 'It’s a dam. It doesn’t count'], ['N3', 'Joburg to the beach, in two characters'],
+  ['DURBS', 'Where you are. Affectionately'], ['BRAAI', 'Starts at 2. Serves at 9'], ['COAST', 'One of them. The east one'], ['SLOPS', 'Footwear, Durban formal'], ['BEACH', 'The office, Dezemba branch'],
+  ['MANGO', 'Eaten over the sink'], ['SURF', 'What the intern went to do'], ['TAN', 'The souvenir you wear home'], ['OCEAN', 'Warmer than your office'], ['VAAL', 'Not the coast. Never the coast'],
+  ['PIE', 'Harrismith, halfway, mandatory'], ['TIDE', 'It took the sandcastle'], ['PADKOS', 'Gran’s “small” portion. Feeds 40'], ['ICE', 'Goes in the cooler box first'], ['LEKKER', 'Nice. Properly nice'], ['SUN', 'Rises over the ocean here. Over a mine dump there'],
+];
+function dcPuzzle(day) {
+  const N = 7, pool = DC_POOL.map(([a, c]) => ({ a, c, w: a.replace(/[^A-Z0-9]/g, '') })).filter(x => x.w.length >= 2 && x.w.length <= N);
+  let best = null;
+  for (let att = 0; att < 90; att++) {
+    const r = dgRng(dgHash('deckchair:' + day + '#' + att)), P = dgShuffle(pool, r);
+    const g = Array(N * N).fill(null), occ = Array(N * N).fill(0), ents = [];
+    const at = (rr, cc) => (rr < 0 || cc < 0 || rr >= N || cc >= N ? null : g[rr * N + cc]);
+    const can = (w, r0, c0, d) => {
+      const dr = d === 'd' ? 1 : 0, dc = d === 'a' ? 1 : 0, re = r0 + dr * (w.length - 1), ce = c0 + dc * (w.length - 1);
+      if (r0 < 0 || c0 < 0 || re >= N || ce >= N || at(r0 - dr, c0 - dc) || at(re + dr, ce + dc)) return -1;
+      let cross = 0, fresh = 0;
+      for (let i = 0; i < w.length; i++) {
+        const rr = r0 + dr * i, cc = c0 + dc * i, ch = at(rr, cc);
+        if (ch) { if (ch !== w[i] || occ[rr * N + cc] & (d === 'a' ? 1 : 2)) return -1; cross++; }
+        else { fresh++; if (at(rr + dc, cc + dr) || at(rr - dc, cc - dr)) return -1; }
+      }
+      return fresh ? cross : -1;
+    };
+    const put = (x, r0, c0, d) => { const dr = d === 'd' ? 1 : 0, dc = d === 'a' ? 1 : 0, cells = []; for (let i = 0; i < x.w.length; i++) { const k = (r0 + dr * i) * N + c0 + dc * i; g[k] = x.w[i]; occ[k] |= d === 'a' ? 1 : 2; cells.push(k); } ents.push({ ...x, r0, c0, d, cells }); };
+    const first = P.find(x => x.w.length >= 5); const fr = 1 + Math.floor(r() * 5); put(first, fr, Math.floor(r() * (N - first.w.length + 1)), 'a');
+    for (let pass = 0; pass < 4 && ents.length < 9; pass++) for (const x of P) {
+      if (ents.length >= 9 || ents.some(e => e.w === x.w)) continue;
+      const opts = []; for (const d of ['a', 'd']) for (let r0 = 0; r0 < N; r0++) for (let c0 = 0; c0 < N; c0++) { const k = can(x.w, r0, c0, d); if (k > 0) opts.push([r0, c0, d, k]); }
+      if (opts.length) { const top = Math.max(...opts.map(o => o[3])), pick = opts.filter(o => o[3] === top); const o = pick[Math.floor(r() * pick.length)]; put(x, o[0], o[1], o[2]); }
+    }
+    const fill = g.filter(Boolean).length, sc = Math.min(ents.length, 9) * 100 + fill;
+    if (!best || sc > best.sc) best = { sc, g, ents };
+    if (ents.length >= 8 && fill >= 26) break;
+  }
+  let num = 0; const nums = {};
+  for (let k = 0; k < N * N; k++) if (best.ents.some(e => e.cells[0] === k)) nums[k] = ++num;
+  const ents = best.ents.map(e => ({ ...e, num: nums[e.cells[0]], len: e.a.split(' ').map(p => p.replace(/[^A-Z0-9]/g, '').length).join(',') })).sort((x, y) => x.num - y.num);
+  return { N, sol: best.g, nums, ents };
+}
+
+function DeckChairGame() {
+  const [day] = React.useState(dgDay);
+  const P = React.useMemo(() => dcPuzzle(day), [day]);
+  const [saved, setSaved] = useStored('lsd2-deckchair', null);
+  const [entered, setEntered] = React.useState(false);
+  const st = saved && saved.day === day ? saved : { day, letters: {}, start: null, end: null, wrong: null };
+  const save = patch => setSaved({ ...st, ...patch });
+  const secs = useDgClock(st.start, st.end);
+  const done = !!st.end, N = P.N;
+  const first = P.ents[0];
+  const [cur, setCur] = React.useState(first ? first.cells[0] : 0);
+  const [dir, setDir] = React.useState(first ? first.d : 'a');
+  const key = React.useRef(null);
+  const entOf = (k, d) => P.ents.find(e => e.d === d && e.cells.includes(k));
+  const ent = entOf(cur, dir) || entOf(cur, dir === 'a' ? 'd' : 'a');
+  const focus = () => { if (key.current) key.current.focus({ preventScroll: true }); };
+  const pickCell = k => { if (!P.sol[k] || done) return; if (k === cur && entOf(k, dir === 'a' ? 'd' : 'a')) setDir(dir === 'a' ? 'd' : 'a'); else { setCur(k); if (!entOf(k, dir)) setDir(dir === 'a' ? 'd' : 'a'); } focus(); };
+  const pickEnt = e => { if (done) return; setDir(e.d); setCur(e.cells.find(k => !st.letters[k]) ?? e.cells[0]); focus(); };
+  const type = ch => {
+    if (done || !ent) return; const L = { ...st.letters, [cur]: ch }; save({ letters: L });
+    const i = ent.cells.indexOf(cur); if (i < ent.cells.length - 1) setCur(ent.cells[i + 1]);
+    else { const nx = P.ents[(P.ents.indexOf(ent) + 1) % P.ents.length]; setDir(nx.d); setCur(nx.cells.find(k => !L[k]) ?? nx.cells[0]); }
+  };
+  const back = () => {
+    if (done || !ent) return; const L = { ...st.letters };
+    if (L[cur]) { delete L[cur]; save({ letters: L }); return; }
+    const i = ent.cells.indexOf(cur); if (i > 0) { const k = ent.cells[i - 1]; delete L[k]; save({ letters: L }); setCur(k); }
+  };
+  const move = (dr, dc) => { let r0 = Math.floor(cur / N) + dr, c0 = cur % N + dc; while (r0 >= 0 && c0 >= 0 && r0 < N && c0 < N) { const k = r0 * N + c0; if (P.sol[k]) { setCur(k); setDir(dr ? 'd' : 'a'); if (!entOf(k, dr ? 'd' : 'a')) setDir(dr ? 'a' : 'd'); return; } r0 += dr; c0 += dc; } };
+  const onKey = e => {
+    if (e.key === 'Backspace') { e.preventDefault(); back(); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); move(0, 1); } else if (e.key === 'ArrowLeft') { e.preventDefault(); move(0, -1); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); move(1, 0); } else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1, 0); }
+    else if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); const i = P.ents.indexOf(ent); pickEnt(P.ents[(i + (e.shiftKey ? P.ents.length - 1 : 1)) % P.ents.length]); }
+    else if (e.key.length === 1 && /[a-z0-9]/i.test(e.key) && !e.metaKey && !e.ctrlKey) { e.preventDefault(); type(e.key.toUpperCase()); }
+  };
+  const onInput = e => { const v = (e.target.value || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); e.target.value = ''; if (v) type(v[v.length - 1]); };
+  const reveal = () => { const wrong = P.sol.reduce((n, ch, k) => n + (ch && st.letters[k] !== ch ? 1 : 0), 0); save({ end: Date.now(), wrong, revealed: true }); };
+  const submit = () => { const wrong = P.sol.reduce((n, ch, k) => n + (ch && st.letters[k] !== ch ? 1 : 0), 0); save({ end: Date.now(), wrong }); };
+  const score = done && !st.revealed ? Math.max(100, 700 + dgBonus(secs, 90, 600, 300) - 25 * (st.wrong || 0)) : 0;
+  if (!entered && st.start) return <DgReady id="game-13" kicker={'The Deck Chair · ' + day + ' · ' + (st.end ? 'done for today' : 'clock still running')} title={<>Sit <Sel>down.</Sel></>} line={st.end ? 'You’ve had your go today. Here’s how it works, for tomorrow.' : 'You started this one already. The clock didn’t wait.'} cta={st.end ? '[ See today’s result ]' : '[ Carry on ]'} onGo={() => setEntered(true)} />;
+  if (!st.start) return <DgReady id="game-13" kicker={'The Deck Chair · ' + day + ' · ' + P.ents.length + ' clues'} title={<>Sit <Sel>down.</Sel></>} line="A small crossword. Type your answers, then hand it in. Wrong letters only show up when you hand it in. The clock starts when you sit." cta="[ Sit down ]" onGo={() => { save({ start: Date.now() }); setTimeout(focus, 50); }} />;
+  const filled = P.sol.filter((ch, k) => ch && st.letters[k]).length, total = P.sol.filter(Boolean).length;
+  const Clues = ({ d, t }) => <div><div className="lbl blue" style={{ marginBottom: 8 }}>{t}</div><ol className="dc-clues">{P.ents.filter(e => e.d === d).map(e => <li key={e.num + d} className={ent === e && !done ? 'on' : ''} onClick={() => pickEnt(e)}><b>{e.num}</b><span>{e.c + ' (' + e.len + ')'}{done && <em>{' · ' + e.a}</em>}</span></li>)}</ol></div>;
+  return (
+    <div className="dg-wrap">
+      <div className="dg-board">
+        <div className="between lbl"><span className="blue">{done ? (st.revealed ? 'Revealed · 0 marks' : st.wrong ? st.wrong + ' wrong letter' + (st.wrong === 1 ? '' : 's') : 'Clean sheet') : filled + ' / ' + total + ' letters'}</span><span className="muted">{(done ? 'Handed in at ' : 'Clock ') + dgTime(secs)}</span></div>
+        <div className="dc-grid" style={{ gridTemplateColumns: 'repeat(' + N + ', minmax(0, 1fr))' }} onClick={focus}>
+          {P.sol.map((ch, k) => {
+            if (!ch) return <span key={k} className="dc-c void"></span>;
+            const v = st.letters[k] || '', inEnt = ent && ent.cells.includes(k) && !done;
+            const cls = 'dc-c' + (done ? (v === ch ? ' right' : ' wrong') : k === cur ? ' cur' : inEnt ? ' word' : '');
+            return <span key={k} className={cls} onClick={e => { e.stopPropagation(); pickCell(k); }}>{P.nums[k] && <i>{P.nums[k]}</i>}{done && v !== ch ? <><s>{v}</s><b>{ch}</b></> : v}</span>;
+          })}
+          <input ref={key} className="dc-key" aria-label="Crossword letter entry" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck="false" inputMode="text" onKeyDown={onKey} onInput={onInput} />
+        </div>
+        {!done && ent && <div className="dc-now"><b>{ent.num + (ent.d === 'a' ? ' across' : ' down')}</b><span>{ent.c + ' (' + ent.len + ')'}</span></div>}
+        {!done && <div className="row"><button type="button" className="btn primary sm" onClick={submit}>[ Hand it in ]</button><span className="lbl muted">One go a day. Wrong letters show after you hand it in.</span></div>}
+        {!done && <RevealBtn id="game-13" daily onReveal={reveal} />}
+      </div>
+      <div className="dg-clues">
+        <Clues d="a" t="Across" /><Clues d="d" t="Down" />
+        {done && <ScoreBanner id="game-13" pts={score} revealed={st.revealed ? { answer: P.ents.map(e => e.a).join(', '), plural: true } : null} share={{ no: ltsdDailyNo(), kicker: 'No. ' + ltsdDailyNo(), wrong: st.wrong || 0, label: 'Handed in', big: st.wrong ? String(st.wrong) : 'Clean', unit: st.wrong ? (st.wrong === 1 ? 'wrong letter.' : 'wrong letters.') : 'sheet.', sub: 'A small crossword for a long chair. No spoilers.' }} line={'700 + ' + dgBonus(secs, 90, 600, 300) + ' for speed − ' + 25 * (st.wrong || 0) + ' for wrong letters. New crossword at midnight.'} />}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { LostFoundGame, DeckChairGame });

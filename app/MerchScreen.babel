@@ -1,0 +1,82 @@
+// Merch is a limited drop, collected in person at Gateway. No cart, no checkout: "Put my name down" opens a request form.
+// PRODUCTION: "made" and "left" counts should come from Gateway's stock list, not data.js. Requests go to a server, not localStorage.
+const M_SIZES = ['S', 'M', 'L', 'XL', 'XXL'];
+const mName = m => (m.tee ? m.name[0] + m.name.slice(1, -1).toLowerCase() + ' tee' : m.name);
+
+function MerchRequest({ item, onClose }) {
+  const me = useProfile();
+  const list = window.LSD2.merch.filter(m => m.left > 0);
+  const [f, setF] = React.useState({ name: me ? me.name : '', email: me ? me.email : '', item: item.id, size: 'L', news: true });
+  const [err, setErr] = React.useState({});
+  const [done, setDone] = React.useState(false);
+  const it = window.LSD2.merch.find(m => m.id === f.item) || item;
+  React.useEffect(() => { const k = e => { if (e.key === 'Escape') onClose(); }; addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, []);
+  const set = k => e => { const v = k === 'news' ? e.target.checked : e.target.value; setF(x => ({ ...x, [k]: v })); if (err[k]) setErr(x => ({ ...x, [k]: null })); };
+  const submit = e => {
+    e.preventDefault(); const x = {};
+    if (!f.name.trim()) x.name = 'Gateway needs a name for the list.';
+    // Strict mode, same as every other name field.
+    // PRODUCTION: route all free text through a server-side moderation API (e.g. OpenAI Moderation / Azure AI Content Safety) PLUS this custom SA wordlist before rendering. Client-side filtering is a placeholder and must not ship as the only defence. Shareable text and Submit a word entries should also be human-reviewed where feasible.
+    else if (lsdBlocked(f.name)) x.name = 'Not on the list, bru.';
+    if (!/^\S+@\S+\.\S+$/.test(f.email.trim())) x.email = f.email.trim() ? 'That looks like a vaalie typed it.' : 'Gateway needs this.';
+    else if (lsdBlocked(f.email)) x.email = 'Not that word, bru.';
+    setErr(x); if (Object.keys(x).length) return;
+    try { const q = JSON.parse(localStorage.getItem('lsd2-merch-requests') || '[]'); q.push({ ...f, size: it.tee ? f.size : null, at: new Date().toISOString() }); localStorage.setItem('lsd2-merch-requests', JSON.stringify(q)); } catch (e2) {}
+    setDone(true);
+  };
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="m-req" role="dialog" aria-modal="true" aria-label="Put your name down" onClick={e => e.stopPropagation()}>
+        <div className="between lbl"><span className="blue">{it.id + ' · ' + it.kind}</span><button type="button" className="chip" style={{ padding: '6px 12px', fontSize: 13 }} onClick={onClose}>Close</button></div>
+        {done ? <>
+          <div className="hl" style={{ fontSize: 'clamp(36px, 4vw, 52px)' }}><Sel>Noted.</Sel></div>
+          <p className="lead" style={{ margin: 0 }}>If one’s left when you get here, it’s yours. Collection: Gateway, Durban. Bring your student card — no card, no merch, no exceptions. Okay, some exceptions. Bring the card.</p>
+          <div className="row"><a className="btn primary" href="#card" onClick={onClose}>[ Get my student card ]</a><button type="button" className="btn line sm" onClick={onClose}>Back to the merch</button></div>
+        </> : <form onSubmit={submit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="hl" style={{ fontSize: 'clamp(36px, 4vw, 52px)' }}>Put your name <Sel>down.</Sel></div>
+          <p style={{ margin: 0, fontSize: 17, lineHeight: 1.45, color: 'var(--ink-2)' }}>Requesting is not reserving. Reserving is not having. Having requires coming to Gateway. That’s the system. The system is vibes.</p>
+          <label className="ctl"><span className={'lbl ' + (err.name ? 'blue' : 'muted')}>{'Name' + (err.name ? ' · ' + err.name : '')}</span><input className="field" value={f.name} onChange={set('name')} placeholder="As it appears on your student card" /></label>
+          <label className="ctl"><span className={'lbl ' + (err.email ? 'blue' : 'muted')}>{'Email' + (err.email ? ' · ' + err.email : '')}</span><input className="field" type="email" value={f.email} onChange={set('email')} placeholder="you@example.co.za" /></label>
+          <label className="ctl"><span className="lbl muted">Item</span><select className="field" value={f.item} onChange={set('item')}>{list.map(m => <option key={m.id} value={m.id}>{mName(m) + ' · ' + m.left + ' left'}</option>)}</select></label>
+          {it.tee && <div className="ctl"><span className="lbl muted">Size</span><div className="row" style={{ gap: 6 }}>{M_SIZES.map(s => <button key={s} type="button" className={'chip' + (f.size === s ? ' on' : '')} onClick={() => setF(x => ({ ...x, size: s }))}>{s}</button>)}</div></div>}
+          <label className="tick"><input type="checkbox" checked={f.news} onChange={set('news')} /><span>Mail me when collection opens — no spam, just merch news, bru.</span></label>
+          <div className="row"><button type="submit" className="btn primary">[ Name down, ekse ]</button></div>
+        </form>}
+      </div>
+    </div>
+  );
+}
+
+function MerchScreen() {
+  const [req, setReq] = React.useState(null);
+  return (
+    <div>
+      <PageHead index="06" kicker="Limited edition · collect at Gateway" title="Merch for graduates.">
+        <p className="lead" style={{ margin: 0 }}>Limited edition. Properly limited — we counted. Available at Gateway, Durban, and nowhere else on this earth. The internet can look. Collecting requires the N3.</p>
+      </PageHead>
+      <div className="merch">
+        {window.LSD2.merch.map(m => {
+          const gone = !(m.left > 0);
+          return (
+            <div key={m.id} className={'card m-card' + (gone ? ' gone' : '')}>
+              <div className="m-prev hl">{m.tee ? <Sel on={!gone}>{m.name[0] + m.name.slice(1).toLowerCase()}</Sel> : <span>{m.name}</span>}</div>
+              <div className="m-body">
+                <div className="between lbl"><span className="blue">{m.id}</span><span className="muted">{m.kind}</span></div>
+                <div className="m-name">{mName(m)}</div>
+                <p className="m-desc">{m.desc}</p>
+                <div className="lbl m-scarce">{'Limited · ' + m.made + ' made · ' + (gone ? 0 : m.left) + ' left'}</div>
+                <div className="m-foot">
+                  {gone ? <span className="lbl">Gone. Like the long weekend.</span> : <button type="button" className="btn line sm" onClick={() => setReq(m)}>Put my name down</button>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <p className="lbl muted m-fine">Merch is limited and collection is in person at Gateway, Durban. A name on the list is a head start, not a guarantee. Fluency impresses the team but does not skip the queue.</p>
+      {req && <MerchRequest item={req} onClose={() => setReq(null)} />}
+    </div>
+  );
+}
+
+Object.assign(window, { MerchScreen });

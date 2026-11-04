@@ -1,0 +1,14 @@
+@font-face{font-family:'Switzer';font-style:normal;font-weight:400;font-display:swap;src:url('../assets/fonts/switzer-normal-400.woff2') format('woff2');}
+@font-face{font-family:'Switzer';font-style:italic;font-weight:400;font-display:swap;src:url('../assets/fonts/switzer-italic-400.woff2') format('woff2');}
+@font-face{font-family:'Switzer';font-style:normal;font-weight:500;font-display:swap;src:url('../assets/fonts/switzer-normal-500.woff2') format('woff2');}
+@font-face{font-family:'Switzer';font-style:normal;font-weight:600;font-display:swap;src:url('../assets/fonts/switzer-normal-600.woff2') format('woff2');}
+@font-face{font-family:'Switzer';font-style:normal;font-weight:700;font-display:swap;src:url('../assets/fonts/switzer-normal-700.woff2') format('woff2');}
+@font-face{font-family:'Switzer';font-style:normal;font-weight:800;font-display:swap;src:url('../assets/fonts/switzer-normal-800.woff2') format('woff2');}
+@font-face{font-family:'Switzer';font-style:normal;font-weight:900;font-display:swap;src:url('../assets/fonts/switzer-normal-900.woff2') format('woff2');}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:400;font-display:swap;src:url('../assets/fonts/IBMPlexMono-Regular.ttf') format('truetype');}
+@font-face{font-family:'IBM Plex Mono';font-style:italic;font-weight:400;font-display:swap;src:url('../assets/fonts/IBMPlexMono-Italic.ttf') format('truetype');}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;font-display:swap;src:url('../assets/fonts/IBMPlexMono-Medium.ttf') format('truetype');}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:600;font-display:swap;src:url('../assets/fonts/IBMPlexMono-SemiBold.ttf') format('truetype');}
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:700;font-display:swap;src:url('../assets/fonts/IBMPlexMono-Bold.ttf') format('truetype');}
+@font-face{font-family:'IBM Plex Mono';font-style:italic;font-weight:700;font-display:swap;src:url('../assets/fonts/IBMPlexMono-BoldItalic.ttf') format('truetype');}
+@font-face{font-family:'Geist Pixel';font-style:normal;font-weight:400;font-display:swap;src:url('../assets/fonts/GeistPixel-Regular-VariableFont_ELSH.ttf') format('truetype');}

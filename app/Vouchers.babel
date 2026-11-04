@@ -1,0 +1,108 @@
+// Voucher dock: sits beside the student card. Holds any number of vouchers, so future types (spot prizes, exam rewards) drop in without redesign.
+// Wording rule: getting a voucher = Claim. Spending it at the counter = Redeem. Never swap them.
+// PRODUCTION: see docs/study-grant-handover.md. Everything below is device-local for the prototype; the server owns issuing, the one-per-student rule, the pool cap and the one-way redeemed flag.
+const V_MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const ltsdStamp = (iso, secs) => { if (!iso) return '—'; const d = new Date(iso); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + (secs ? ':' + pad2(d.getSeconds()) : '') + ' · ' + d.getDate() + ' ' + V_MON[d.getMonth()] + ' ' + d.getFullYear(); };
+const grantCfg = () => (window.LSD_CONFIG && window.LSD_CONFIG.studyGrant) || {};
+const VOUCHER_TYPES = {
+  // offer + terms: client copy. Bracketed values are placeholders, TBC by the client / legal.
+  'study-grant': { name: 'Study Grant', line: 'One per student. Redeem at the counter, in front of the staff. The aunties audit.', empty: 'Pool empty — the bursary ran out, bru',
+    offer: 'R[50] off when you spend R[300] or more at participating campus outlets.',
+    terms: 'Valid until [31 Dezemba 2026] · Minimum spend R[300], single transaction · Participating outlets listed at the merch counter · Full terms: [legal to supply] · No cash value, bru.' },
+};
+
+// Prototype pool check: counts grants issued on this device. PRODUCTION: the server counts, against the client-set cap.
+function grantPoolEmpty() {
+  const cap = grantCfg().pool; if (cap == null) return false;
+  let n = 0; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^lsd2-vouchers(@|$)/.test(k)) n += (JSON.parse(localStorage.getItem(k)) || []).filter(v => v.type === 'study-grant' && v.state !== 'empty').length; } } catch (e) {}
+  return n >= cap;
+}
+function newGrant() { const now = new Date().toISOString(); return { id: 'sg-' + Date.now().toString(36), type: 'study-grant', issued: now, redeemed: null, state: grantPoolEmpty() ? 'empty' : 'live' }; }
+
+// Digits roll before landing, so the timestamp visibly ticks in.
+function TickIn({ text, ms = 900 }) {
+  const [t, setT] = React.useState(0);
+  React.useEffect(() => { const t0 = performance.now(); let raf; const f = now => { const p = Math.min(1, (now - t0) / ms); setT(p); if (p < 1) raf = requestAnimationFrame(f); }; raf = requestAnimationFrame(f); return () => cancelAnimationFrame(raf); }, [text]);
+  const chars = text.split(''), N = chars.length;
+  return <span className="vc-tick">{chars.map((c, i) => /\d/.test(c) && t < 0.35 + 0.65 * i / N ? String(Math.floor(Math.random() * 10)) : c).join('')}</span>;
+}
+
+// Gateway mark, black on paper-white: a stamp of issue on every voucher state, not decoration.
+const VcMark = () => <img className="vc-mark" src={LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png')} alt="Issued by Gateway" />;
+
+function useNow() { const [n, setN] = React.useState(() => new Date()); React.useEffect(() => { const i = setInterval(() => setN(new Date()), 1000); return () => clearInterval(i); }, []); return n; }
+
+function Voucher({ v, no, fresh, onAsk, flipping }) {
+  const T = VOUCHER_TYPES[v.type] || { name: v.type, line: '' };
+  const now = useNow();
+  const offer = T.offer ? <p className="vc-offer"><span className="lbl">Good for: </span>{T.offer}</p> : null;
+  if (v.state === 'empty') return (
+    <div className={'vc empty' + (fresh ? ' pop' : '')}><div className="vc-in"><div className="vc-face vc-front">
+      <div className="vc-top lbl"><span className="muted">{T.name}</span><span className="muted">{no}</span></div>
+      <div className="hl vc-t">{T.name}.</div>
+      <div className="lbl vc-rec">{T.name + ' · ' + T.empty}</div>
+      <div className="vc-perf"></div>
+      <div className="vc-stub"><VcMark /><span className="lbl muted">Not redeemable. Still official-ish.</span></div>
+    </div></div></div>
+  );
+  const red = !!v.redeemed;
+  return (
+    <div className={'vc' + (red ? ' redeemed' : '') + (fresh ? ' pop' : '') + (flipping ? ' anim' : '')}>
+      <div className="vc-in">
+        <button type="button" className="vc-face vc-front" onClick={red ? undefined : onAsk} tabIndex={red ? -1 : 0} aria-hidden={red} aria-label={'Redeem your ' + T.name}>
+          <div className="vc-top lbl"><span className="blue">{T.name}</span><span className="muted">{no}</span></div>
+          <div className="hl vc-t">Study <Sel>Grant.</Sel></div>
+          <div className="lbl vc-rec">{T.name + ' · Unredeemed · Issued ' + ltsdStamp(v.issued)}</div>
+          {offer}
+          <div className="vc-perf"></div>
+          <div className="vc-stub"><VcMark /><p className="vc-line">{T.line}</p></div>
+          <div className="lbl blue vc-go">Tap at the counter to redeem</div>
+          {T.terms && <p className="vc-terms">{T.terms}</p>}
+        </button>
+        <div className="vc-face vc-back" aria-hidden={!red} role="status">
+          <div className="vc-top lbl"><span>{T.name}</span><span>{no}</span></div>
+          <div className="hl vc-t"><Sel>Redeemed.</Sel></div>
+          <div className="lbl vc-rec vc-stamp">{'Redeemed · '}{red && <TickIn text={ltsdStamp(v.redeemed)} ms={flipping ? 1400 : 900} />}</div>
+          <div className="lbl vc-iss">{'Issued ' + ltsdStamp(v.issued)}</div>
+          {offer}
+          <div className="vc-perf"></div>
+          <div className="vc-stub vc-paper"><VcMark /><div className="vc-stub-t"><p className="vc-line">{T.line}</p><div className="lbl vc-live"><i></i>{'Live · ' + ltsdStamp(now.toISOString(), true)}</div></div></div>
+        </div>
+      </div>
+      {fresh && <span className="vc-burst" aria-hidden="true">{Array.from({ length: 14 }, (_, i) => { const a = i / 14 * Math.PI * 2, r = 120 + (i % 3) * 34; return <i key={i} style={{ '--dx': Math.cos(a) * r + 'px', '--dy': Math.sin(a) * r + 'px', '--r': (i * 47) + 'deg', animationDelay: (i % 4) * 30 + 'ms' }}></i>; })}</span>}
+    </div>
+  );
+}
+
+function VoucherDock({ vouchers, setVouchers, no, freshId }) {
+  const [ask, setAsk] = React.useState(null);
+  const [flip, setFlip] = React.useState(null);
+  const redeem = id => {
+    // One-way. A redeemed voucher keeps its first timestamp forever.
+    setVouchers(list => list.map(v => v.id === id && !v.redeemed && v.state !== 'empty' ? { ...v, redeemed: new Date().toISOString() } : v));
+    setAsk(null); setFlip(id);
+  };
+  React.useEffect(() => { if (!ask) return; const k = e => { if (e.key === 'Escape') setAsk(null); }; addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, [ask]);
+  return (
+    <div className="vc-dock">
+      <div className="lbl muted">{'Voucher dock · ' + vouchers.length}</div>
+      <div className="vc-list">{vouchers.map(v => <Voucher key={v.id} v={v} no={no} fresh={freshId === v.id} flipping={flip === v.id} onAsk={() => setAsk(v.id)} />)}</div>
+      {/* TESTING ONLY — remove before launch (site/README.md · Before launch). Returns this student's Study Grant to pre-claim so the flow can be demoed again.
+          PRODUCTION: this control must not exist in the live build. The one-way redeemed flag is enforced server-side and is never resettable from the interface. */}
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}><button type="button" className="btn line" onClick={() => { setAsk(null); setFlip(null); setVouchers(list => list.filter(v => v.type !== 'study-grant')); }}>Reset voucher (testing)</button><span className="lbl" style={{ color: '#c0392b' }}>Testing only · remove before launch</span></span>
+      {ask && <div className="scrim" onClick={() => setAsk(null)}>
+        <div className="dlg vc-dlg" role="dialog" aria-modal="true" aria-labelledby="vc-dlg-t" onClick={e => e.stopPropagation()}>
+          <span className="lbl" style={{ color: 'var(--popover-on)' }}>Study Grant · counter check</span>
+          <div id="vc-dlg-t" className="hl" style={{ fontSize: 'clamp(40px, 5vw, 56px)', padding: '10px 0 4px' }}>Redeem now?</div>
+          <p style={{ margin: 0, fontSize: 18, lineHeight: 1.45 }}>Only tap this at the counter — it works once.</p>
+          <div className="row" style={{ marginTop: 22 }}>
+            <button type="button" className="btn line inv sm" onClick={() => setAsk(null)} autoFocus>Not yet</button>
+            <button type="button" className="btn primary" onClick={() => redeem(ask)}>[ Redeem it ]</button>
+          </div>
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+Object.assign(window, { VoucherDock, newGrant, ltsdStamp, VOUCHER_TYPES });

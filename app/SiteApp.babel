@@ -1,0 +1,247 @@
+const ROUTES = ['home', 'enrol', 'lessons', 'dictionary', 'activities', 'flashcards', 'ekselator', 'card', 'study', 'submit', 'kit', 'exam', 'merch', 'profile', 'leaderboard', 'terms', 'report'];
+const NAV = [['enrol', 'Enrol page'], ['card', 'Student card'], ['lessons', 'Lessons'], ['dictionary', 'Dictionary'], ['activities', 'Games'], ['leaderboard', 'Class Rankings'], ['flashcards', 'Flashcards'], ['ekselator', 'Ekselator'], ['study', 'Study pack'], ['kit', 'Ducking-out kit'], ['exam', 'Final exam'], ['merch', 'Merch'], ['submit', 'Submit a word']];
+const parseRoute = () => { let [p, s] = location.hash.replace('#', '').split('/'); if (p === 'translate') p = 'ekselator'; if (p === 'games') p = 'activities'; return { page: !p ? 'home' : ROUTES.includes(p) ? p : 'lost', sub: s }; };
+
+const HDR_SPOTIFY = 'https://open.spotify.com/playlist/4lbjRGukzSVUvbZq91tbI6';
+const HDR_APPLE = 'https://music.apple.com/za/playlist/learn-to-speak-durban/pl.u-AkAmPlyUlVNPMX5';
+
+function PlaylistPill() {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => { if (!open) return; const f = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }; const k = e => { if (e.key === 'Escape') setOpen(false); }; addEventListener('pointerdown', f); addEventListener('keydown', k); return () => { removeEventListener('pointerdown', f); removeEventListener('keydown', k); }; }, [open]);
+  return (
+    <div className="hdr-pl" ref={ref}>
+      <button type="button" className={'hdr-marks hdr-pl-b' + (open ? ' on' : '')} aria-expanded={open} onClick={() => setOpen(!open)}><span aria-hidden="true" style={{ fontSize: 16, lineHeight: 1 }}>♫</span>Playlist</button>
+      {open && <div className="hdr-pl-m card">
+        <span className="lbl muted">For the N3. Not the M1.</span>
+        <a className="btn line sm" href={HDR_SPOTIFY} target="_blank" rel="noopener" onClick={() => setOpen(false)}>Spotify</a>
+        <a className="btn line sm" href={HDR_APPLE} target="_blank" rel="noopener" onClick={() => setOpen(false)}>Apple Music</a>
+      </div>}
+    </div>
+  );
+}
+
+function Header({ page, sub }) {
+  // The home/enrol hero already carries the full lockup + Gateway sign-off, so the header lockup stays off there.
+  const heroBy = page === 'home' || (page === 'enrol' && sub !== 'new');
+  const [enrolled] = useStored('lsd2-enrolled', false);
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => { const f = () => setOpen(false); addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
+  React.useEffect(() => { document.documentElement.classList.toggle('menu-open', open); const k = e => { if (e.key === 'Escape') setOpen(false); }; addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, [open]);
+  const navCls = id => (page === id ? 'on' : '') + (enrolled || id === 'home' || id === 'enrol' ? '' : ' lk');
+  const [pts] = useStored('lsd2-points', {});
+  const marks = ptsFmt(pointsTotal(pts));
+  const me = useProfile();
+  const fl = useFluency();
+  return (
+    <header className="hdr"><div className="wrap hdr-in">
+      {!heroBy && <div className="hdr-brand"><a className="brand" href="#home" aria-label="Learn to speak Durban, home">Learn to speak <Sel>Durban.</Sel></a><a className="hdr-by" href="https://gatewayworld.co.za/" target="_blank" rel="noopener" aria-label="A public service by Gateway"><span className="lbl">A public service by</span><img src={LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png')} alt="Gateway" /></a></div>}
+      <nav className="nav">{NAV.map(([id, l]) => { const c = navCls(id), on = /\bon\b/.test(c); return <a key={id} href={'#' + id} className={c} aria-current={on ? 'page' : undefined}>{on ? <Sel>{l}</Sel> : l}</a>; })}</nav>
+      <div className="hdr-r">
+        <PlaylistPill />
+        <MarksChip total={pointsTotal(pts)} />
+        {enrolled
+          ? <a className={'btn soft sm hdr-cta' + (page === 'profile' ? ' on' : '')} href="#profile">{(me ? firstName(me.name) : 'Your profile') + ' · ' + fl.level.n}</a>
+          : <a className={'btn primary sm hdr-cta' + (page === 'enrol' ? ' on' : '')} href="#enrol">[ Enrol, bru ]</a>}
+        <button type="button" className={'burger' + (open ? ' on' : '')} aria-expanded={open} aria-controls="mnav" aria-label={open ? 'Close menu' : 'Open menu'} onClick={() => setOpen(!open)}><span className="bl"><i></i><i></i><i></i></span>{open ? 'Close' : 'Menu'}</button>
+      </div>
+    </div>
+    {open && <nav id="mnav" className="mnav">
+      <a href="#home" className={page === 'home' ? 'on' : ''}>Home<span className="lbl muted">Start here</span></a>
+      {NAV.map(([id, l]) => <a key={id} href={'#' + id} className={navCls(id)}>{l}{!(enrolled || id === 'enrol') && <span className="lbl muted">Locked</span>}</a>)}
+      <div className="mnav-foot">
+        {enrolled ? <a className="btn soft" href="#profile">{(me ? firstName(me.name) : 'Your profile') + ' · ' + fl.level.n}</a> : <a className="btn primary" href="#enrol">[ Enrol, bru ]</a>}
+        <a className="btn line sm" href="#leaderboard">{'Marks · ' + marks}</a>
+        <div className="row" style={{ gap: 10, flexWrap: 'nowrap' }}><a className="btn line sm" style={{ flex: 1 }} href={HDR_SPOTIFY} target="_blank" rel="noopener">Playlist · Spotify</a><a className="btn line sm" style={{ flex: 1 }} href={HDR_APPLE} target="_blank" rel="noopener">Playlist · Apple Music</a></div>
+      </div>
+    </nav>}
+    </header>
+  );
+}
+
+// The 031 slug: last thing on every page. One tap plays a single dial tone (SA 400 Hz) and owns up.
+function Slug031() {
+  const [knew, setKnew] = React.useState(false);
+  const dial = () => {
+    try { const A = window.AudioContext || window.webkitAudioContext; const c = Slug031.ctx || (Slug031.ctx = new A()); if (c.state === 'suspended') c.resume(); const o = c.createOscillator(), v = c.createGain(), t = c.currentTime; o.type = 'sine'; o.frequency.value = 400; v.gain.setValueAtTime(0.0001, t); v.gain.exponentialRampToValueAtTime(0.12, t + 0.02); v.gain.setValueAtTime(0.12, t + 0.7); v.gain.exponentialRampToValueAtTime(0.0001, t + 0.8); o.connect(v).connect(c.destination); o.start(t); o.stop(t + 0.85); } catch (e) {}
+    setKnew(true); clearTimeout(Slug031.t); Slug031.t = setTimeout(() => setKnew(false), 2200);
+  };
+  return <div className="ft-031w"><button type="button" className="ft-031" onClick={dial} aria-live="polite">{knew ? '031. You knew.' : LTSD_SLUG}</button></div>;
+}
+
+function Footer() {
+  return (
+    <footer className="ft"><div className="wrap ft-in">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><a className="brand ft-brand" href="#home" aria-label="Learn to speak Durban, home">Learn to speak <Sel>Durban.</Sel></a><div style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink-2)' }}>A public service by Gateway.</div></div>
+        <div className="lbl muted">REF: LTSD-2026 · No forks were harmed in the making of this website</div>
+        <div className="row" style={{ gap: 16, marginTop: 6 }}><a href="#study">Study pack</a><a href="#card">Student card</a><a href="#kit/quiz">How Durban are you?</a><a href="#exam">Final exam</a><a href="#submit">Submit a word</a><a href="#home" onClick={() => signOut()}>Log out (we’ll pretend this never happened)</a></div>
+        <div className="lbl muted ft-legal"><a href="https://gatewayworld.co.za/privacy-policy/" target="_blank" rel="noopener">Privacy Policy</a><span aria-hidden="true">·</span><a href="https://gatewayworld.co.za/terms-and-conditions/" target="_blank" rel="noopener">Terms & Conditions</a><span aria-hidden="true">·</span><a href="#terms">Campaign & Competition Terms</a><span aria-hidden="true">·</span><a href="#report">Report something dodgy</a><span aria-hidden="true">·</span><span>© Gateway Theatre of Shopping</span></div>
+        <div className="ft-fine">No passwords at this school. Your inbox is your locker key.</div>
+        <div className="ft-fine">Reading the fine print? Very Joburg of you. We respect it.</div>
+      </div>
+      <a className="ft-logo" href="https://gatewayworld.co.za/" target="_blank" rel="noopener" aria-label="Gateway"><img src={LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png')} alt="Gateway" style={{ height: 96, width: 'auto', display: 'block' }} /></a>
+      <Slug031 />
+    </div></footer>
+  );
+}
+
+function TermsScreen() {
+  return (
+    <div className="ph">
+      <h1 className="hl">Campaign & Competition Terms</h1>
+      <p className="lead" style={{ margin: 0 }}>Campaign and competition terms to be inserted on approval by Gateway. [PLACEHOLDER — DO NOT LAUNCH WITHOUT THIS]</p>
+    </div>
+  );
+}
+
+const REPORT_WHERE = ['Student card', 'Class Rankings name', 'Shared result or postcard', 'Certificate of Fluency', 'Submitted word', 'Somewhere else on the site'];
+const REPORT_WHY = ['Profanity', 'Hate or slurs', 'Harassing someone', 'Someone else’s name or photo', 'Pretending to be Gateway', 'Spam or a scam', 'Something else'];
+function ReportScreen() {
+  const blank = { where: REPORT_WHERE[0], why: [], who: '', what: '', email: '' };
+  const [f, setF] = React.useState(blank);
+  const [err, setErr] = React.useState({});
+  const [done, setDone] = React.useState(null);
+  const set = k => e => { const v = e.target.value; setF(x => ({ ...x, [k]: v })); if (err[k]) setErr(x => ({ ...x, [k]: null })); };
+  const tog = w => { setF(x => ({ ...x, why: x.why.includes(w) ? x.why.filter(y => y !== w) : [...x.why, w] })); if (err.why) setErr(x => ({ ...x, why: null })); };
+  const send = e => {
+    e.preventDefault(); const x = {};
+    if (!f.why.length) x.why = 'Pick at least one.';
+    if (!f.who.trim()) x.who = 'Gateway needs something to find it by.';
+    if (f.email.trim() && !/^\S+@\S+\.\S+$/.test(f.email)) x.email = 'That email has gone off-road.';
+    setErr(x); if (Object.keys(x).length) return;
+    // PRODUCTION: send reports to a monitored moderation inbox (and hide the reported item pending review). Stored on this device for now.
+    try { const l = JSON.parse(localStorage.getItem('lsd2-reports') || '[]'); l.push({ ...f, at: new Date().toISOString(), status: 'open' }); localStorage.setItem('lsd2-reports', JSON.stringify(l)); } catch (x2) {}
+    setDone('LTSD-REP-' + String(100 + Math.floor(Math.random() * 900)).padStart(4, '0'));
+  };
+  const L = (k, t) => <span className={'lbl ' + (err[k] ? 'blue' : 'muted')}>{t}{err[k] ? ' · ' + err[k] : ''}</span>;
+  const steps = [['Filed', 'With a reference number. Officially noticed.'], ['Hidden', 'If it’s nasty, it comes down while we look.'], ['Checked', 'By an actual person at Gateway. Not a robot. Not the traffic kind either.'], ['Sorted', 'Removed, renamed, or left alone with a stern look.']];
+  return (
+    <div>
+      <PageHead index="R-01" kicker="Read by a human, not a robot" title="Report something dodgy">
+        <p className="lead" style={{ margin: 0 }}>Somebody put a swear word on a student card. Or your name. Or a slur on the rankings. Tell us where and it gets sorted. Durban is relaxed, not lawless.</p>
+      </PageHead>
+      <div className="sub">
+        {done ? (
+          <div className="card sub-form" style={{ justifyContent: 'center' }}>
+            <span className="lbl blue">{done}</span>
+            <div className="hl" style={{ fontSize: 'clamp(48px, 6vw, 96px)' }}><Sel>Reported.</Sel></div>
+            <p className="lead" style={{ margin: 0 }}>Thanks for keeping it lekker. A person at Gateway will look at it, and anything nasty comes down.</p>
+            <div className="row"><button type="button" className="btn primary" onClick={() => { setF(blank); setDone(null); }}>Report something else</button><a className="btn line" href="#home">Back to the words</a></div>
+          </div>
+        ) : (
+          <form className="card sub-form" onSubmit={send} noValidate>
+            <label className="ctl">{L('where', 'Where you saw it')}<select className="field" value={f.where} onChange={set('where')}>{REPORT_WHERE.map(o => <option key={o}>{o}</option>)}</select></label>
+            <div className="ctl" role="group" aria-label="What’s wrong">{L('why', 'What’s wrong · pick any')}<div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>{REPORT_WHY.map(w => <button key={w} type="button" className={'chip' + (f.why.includes(w) ? ' on' : '')} aria-pressed={f.why.includes(w)} onClick={() => tog(w)}>{w}</button>)}</div></div>
+            <label className="ctl">{L('who', 'Name, word or link on it')}<input className="field" type="text" value={f.who} onChange={set('who')} placeholder="e.g. the name on the card, the ranking spot, a share link" /></label>
+            <label className="ctl">{L('what', 'Anything else · optional')}<textarea className="field" rows={3} value={f.what} onChange={set('what')} placeholder="Where you saw it, when, why it’s not okay." style={{ resize: 'vertical' }}></textarea></label>
+            <label className="ctl">{L('email', 'Your email · optional, if you want to hear back')}<input className="field" type="email" value={f.email} onChange={set('email')} placeholder="you@example.co.za" /></label>
+            <div className="between" style={{ flexWrap: 'wrap' }}><span className="lbl muted">You don’t have to be enrolled. Reports stay private.</span><button type="submit" className="btn primary">[ Send report ]</button></div>
+          </form>
+        )}
+        <div className="sub-steps">
+          <span className="lbl muted">What happens next</span>
+          {steps.map(([t, d], i) => <div key={t} className="card step"><span className="lbl blue">{pad2(i + 1)}</span><div><b>{t}</b><div className="muted">{d}</div></div></div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LockedScreen({ page }) {
+  const label = (NAV.find(n => n[0] === page) || [0, 'This page'])[1];
+  return (
+    <div className="locked-pg">
+      <div className="locked-l">
+        <span className="pill lbl">{'Locked · ' + label}</span>
+        <h1 className="hl">Enrol first, <Sel>bru.</Sel></h1>
+        <p className="lead" style={{ margin: 0 }}>{label} is behind the enrolment desk. It’s free, it takes four fields and zero passwords, and it’s less admin than your parking garage. Enrolled before? The return door is on the right.</p>
+        <a className="btn line sm" href="#home" style={{ alignSelf: 'flex-start' }}>Back to the words</a>
+      </div>
+      <EnrolCard />
+    </div>
+  );
+}
+
+// Where to next: three suggested stops per page, first one recommended. Keeps people moving round the site.
+const NEXT_UP = {
+  card: [['lessons/01', 'Lesson 01', 'Card done. Now learn to say hello like you mean it.'], ['dictionary', 'The Dictionary', 'All 50 words on one page. Skim it on the loo. We won’t ask.'], ['activities', 'Games', 'Practise without anyone watching. Except the Class Rankings.']],
+  lessons: [['flashcards', 'Flashcards', 'Test what stuck. Flip, guess, feel things.'], ['activities', 'Games', 'Eleven ways to practise. Some involve prawns.'], ['exam', 'The final exam', 'All 50 words. One sitting. A certificate if you pass.']],
+  dictionary: [['lessons/01', 'Lessons', 'One word at a time, with examples and a voice.'], ['flashcards', 'Flashcards', 'Find out which ones you actually know.'], ['ekselator', 'The Ekselator', 'Paste an inland email. Watch it come home.']],
+  flashcards: [['activities', 'Games', 'Same words, more pressure, actual marks.'], ['exam', 'The final exam', 'Feeling fluent? Prove it.'], ['lessons/01', 'Lessons', 'The ones you missed are waiting. Patiently.']],
+  activities: [['leaderboard', 'Class Rankings', 'See who’s beating you. It’s probably someone from Sandton.'], ['flashcards', 'Flashcards', 'Brush up between games.'], ['exam', 'The final exam', 'The big one. The certificate one.']],
+  leaderboard: [['activities', 'Games', 'Marks don’t earn themselves. Go on.'], ['profile', 'Your profile', 'Your title, your marks, your permanent record.'], ['card', 'Student card', 'Post it. Let Joburg see the rank.']],
+  ekselator: [['kit', 'The ducking-out kit', 'A postcard, an out-of-office and a quiz. All coastal.'], ['lessons/01', 'Lessons', 'Learn the words it just used on you.'], ['activities', 'Games', 'Put it to the test.']],
+  study: [['lessons/01', 'Lessons', 'Start the course. It’s faster than the N3.'], ['kit', 'The ducking-out kit', 'Your out-of-office, sorted before you go.'], ['card', 'Student card', 'Paperwork first. Then the beach.']],
+  kit: [['ekselator', 'The Ekselator', 'Translate anything else you’re sending inland.'], ['activities', 'Games', 'Eleven games. One Class Rankings.'], ['study', 'Study pack', 'Download the lot for the flight.']],
+  exam: [['card', 'Student card', 'Update the title. You’ve earned it. Maybe.'], ['kit/quiz', 'How Durban are you?', 'Eight questions. One shareable result.'], ['merch', 'Merch', 'Dress like you passed.']],
+  merch: [['activities', 'Games', 'Earn marks for the good stuff.'], ['exam', 'The final exam', 'Pass for a certificate. Merch is extra.'], ['lessons/01', 'Lessons', 'Back to class.']],
+  profile: [['activities', 'Games', 'More marks, higher title.'], ['lessons/01', 'Lessons', 'Every word learnt moves you up.'], ['card', 'Student card', 'Show off the new title.']],
+  submit: [['dictionary', 'The Dictionary', 'Check it’s not already in there.'], ['lessons/01', 'Lessons', 'Learn the official 50.'], ['activities', 'Games', 'While the intern investigates.']],
+};
+function NextUp({ page, sub }) {
+  if (page === 'activities' && sub) return null;
+  if (page === 'study' && sub) return null;
+  const list = NEXT_UP[page]; if (!list) return null;
+  return (
+    <section className="next-up">
+      <div className="lbl muted">Where to next</div>
+      <div className="kit-tabs">{list.map(([to, t, d], i) => <a key={to} href={'#' + to} className={'card kt' + (i === 0 ? ' on' : '')}><span className={'lbl ' + (i === 0 ? 'blue' : 'muted')}>{i === 0 ? 'Up next' : 'Or'}</span><span className="hl kt-t">{t}</span><span className="kt-d">{d}</span></a>)}</div>
+    </section>
+  );
+}
+
+// 404: any hash route the site doesn't know.
+function LostScreen() {
+  return (
+    <div className="lost">
+      <span className="lbl blue">Error 404 · page not found</span>
+      <h1 className="hl lost-h">This page <Sel>vy’d.</Sel></h1>
+      <p className="lead" style={{ margin: 0 }}>It left no note. Very Lesson 28 of it.</p>
+      <div className="row"><a className="btn primary" href="#home">Back to the front desk</a><a className="btn line" href="#lessons/28">Lesson 28: Vy</a></div>
+      <div className="lost-031"><LtsdWave /><span className="s031">{LTSD_SLUG}</span></div>
+    </div>
+  );
+}
+
+function SiteApp() {
+  const [r, setR] = React.useState(parseRoute);
+  React.useEffect(() => { const f = () => { setR(parseRoute()); window.scrollTo(0, 0); }; addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
+  const go = h => { location.hash = h; };
+  const [enrolled] = useStored('lsd2-enrolled', false);
+  const [session] = useStored('lsd2-session', null);
+  const gated = !enrolled && !['home', 'enrol', 'terms', 'report', 'lost'].includes(r.page);
+  const [online, setOnline] = React.useState(navigator.onLine !== false);
+  React.useEffect(() => { const on = () => setOnline(true), off = () => setOnline(false); addEventListener('online', on); addEventListener('offline', off); return () => { removeEventListener('online', on); removeEventListener('offline', off); }; }, []);
+  const screens = {
+    home: <HomeScreen go={go} />,
+    enrol: r.sub === 'new' ? <EnrolNewScreen /> : <HomeScreen go={go} preview />,
+    lessons: <LessonsScreen sub={r.sub} go={go} />,
+    dictionary: <DictionaryScreen />,
+    activities: <ActivitiesScreen key={r.sub || 'hub'} sub={r.sub} />,
+    flashcards: <FlashScreen />,
+    ekselator: <TranslateScreen />,
+    card: <StudentCardScreen />,
+    study: <StudyScreen sub={r.sub} />,
+    submit: <SubmitScreen />,
+    kit: <DuckKitScreen sub={r.sub} />,
+    exam: <ExamScreen />,
+    merch: <MerchScreen />,
+    profile: <ProfileScreen />,
+    leaderboard: <LeaderboardScreen />,
+    terms: <TermsScreen />,
+    report: <ReportScreen />,
+    lost: <LostScreen />,
+  };
+  return (
+    <div data-screen-label={r.page} key={session || 'guest'}>
+      <Header page={r.page} sub={r.sub} />
+      {!online && <div className="offline-bar" role="status"><b className="hl">No <Sel handles={false}>signal.</Sel></b><span>The most Durban thing to happen to you all day.</span></div>}
+      <main className="wrap">{gated ? <LockedScreen page={r.page} /> : screens[r.page]}{!gated && <NextUp page={r.page} sub={r.sub} />}</main>
+      <Footer />
+      <LevelStamp />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<SiteApp />);

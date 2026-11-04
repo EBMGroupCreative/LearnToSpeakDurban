@@ -1,0 +1,87 @@
+const GAMES2 = [
+  { id: 'game-02', t: 'Spot the Vaalie', tag: '5 to find', d: 'A random Durban beach, in writing. Five vaalies are hiding among the locals. New beach every round. Report responsibly.' },
+  { id: 'game-03', t: 'Ja / No Laka', tag: '45 sec', d: '45 seconds of true or false. No laka means yes. Keep up.' },
+  { id: 'game-04', t: 'Durdle', tag: 'Daily · word', d: 'Five letters, six tries, one word a day, all Dezemba. Some days it’s in the Dictionary. Those are the easy days.' },
+  { id: 'game-05', t: 'Pack for Durban', tag: 'Packing', d: 'Pack only what you need. The system will tell you when you’re wrong. Loudly.' },
+  { id: 'game-07', t: 'The braai clock', tag: 'No time', d: 'Guess when the braai is ready. Six guesses. It tells you later or earlier. It’s usually later.', b: 'Guess anyway', h: 'The braai clock.', s: 'The fire is lit. When do we eat?' },
+  { id: 'game-08', t: 'Fork patrol', tag: 'Reflexes', d: 'Forks keep approaching the bunny. You know what to do. Gateway thanks you for your service.', b: 'Report for duty', h: 'Fork patrol.', s: 'Protect the bunny. Confiscate on sight.' },
+];
+GAMES2.push(
+  { id: 'game-09', t: 'The Great Migration', tag: 'Flying · daily best counts', d: 'Fly south for December, like everyone else. Dodge the boss’s calls. Ducks always arrive.', b: 'Migrate', h: 'The Great Migration.', s: 'Joburg to the beach by air. The work you left behind is following you. Ducks always arrive.' },
+  { id: 'game-14', t: 'Keep it cold', tag: 'Arcade · no cap', d: 'The Durban sun versus your cooler box. You have ice. It has all day. Prawns first.', b: 'Grab the ice', h: 'Keep it cold.', s: 'Everything in the cooler box is warming up. The sun does not take breaks. Neither do prawns.' },
+  { id: 'game-11', t: 'Snap, ekse', tag: 'Timed', d: 'Match the word to the meaning before you forget both. The exam will thank you.', b: 'Flip, bru', h: 'Snap, ekse.', s: 'Sixteen cards. Eight words, eight meanings. The clock starts on your first flip.' },
+  { id: 'game-12', t: 'Lost & Found', tag: 'Daily · wordsearch', d: 'Eight words, lost in the letters, like slops at low tide. The clues only tell you what they mean. Daily.', b: 'Start looking', h: 'Lost & Found.', s: 'Eight dictionary words hidden in the letters, any direction. The clues are meanings, not words. One go a day.' },
+  { id: 'game-13', t: 'The Deck Chair', tag: 'Daily · crossword', d: 'A small crossword for a long chair. A few clues, one coffee, no time pressure. Okay, some time pressure. Daily.', b: 'Sit down', h: 'The Deck Chair.', s: 'A mini crossword, new every day. Type it in, hand it in. Wrong letters only show when you do. One go a day.' },
+);
+GAMES2.push({ id: 'game-15', t: 'Aunties Against Everyone', tag: 'Cards · for honour only', d: 'You know the game. This one has an auntie. Fill the gap, worst answer wins, the auntie’s decision is final and unfair.', b: 'Deal me in', h: 'Aunties Against Everyone.', s: 'You, three students and one auntie. Fill the gap, worst answer wins. No marks, nothing on the Class Rankings. Honour only.', honour: true });
+const DAILIES = ['game-04', 'game-12', 'game-13'];
+
+const gameNo = id => 'GAME-' + pad2(GAMES2.findIndex(g => g.id === id) + 1);
+
+function GamePreview({ id }) {
+  if (id === 'game-07') return <div className="hl" style={{ fontSize: 64, fontVariantNumeric: 'tabular-nums' }}>??:<Sel handles={false}>??</Sel></div>;
+  if (id === 'game-08') return <div className="row" style={{ justifyContent: 'center', alignItems: 'center', gap: 6 }}><span style={{ width: 70, height: 70, display: 'grid', placeItems: 'center', flex: 'none' }}><img src={LSD_RES('assets/pack/fork.png')} alt="Fork" draggable="false" style={{ height: 70, width: 'auto', display: 'block', transform: 'rotate(90deg)', filter: 'drop-shadow(0 4px 5px rgba(0,0,0,.18))' }} /></span><img src={LSD_RES('assets/bunny-chow.png')} alt="Bunny chow" draggable="false" style={{ width: 120, height: 'auto', display: 'block', flex: 'none', filter: 'drop-shadow(0 10px 12px rgba(0,0,0,.16))' }} /><span style={{ width: 70, height: 70, display: 'grid', placeItems: 'center', flex: 'none' }}><img src={LSD_RES('assets/pack/fork.png')} alt="Fork" draggable="false" style={{ height: 70, width: 'auto', display: 'block', transform: 'rotate(-90deg)', filter: 'drop-shadow(0 4px 5px rgba(0,0,0,.18))' }} /></span></div>;
+  if (id === 'game-02') return <div className="gp-text">A tourist <Sel>asks for a fork</Sel> with his bunny…</div>;
+  if (id === 'game-03') return <div className="row" style={{ justifyContent: 'center' }}><span className="btn primary sm">No laka</span><span className="btn line sm">Eish, no</span></div>;
+  if (id === 'game-04') return <div className="gp-durdle">{'KOOKS'.split('').map((c, i) => <span key={i} className={i === 0 ? 'g' : i < 3 ? 'y' : ''}>{c}</span>)}</div>;
+  if (id === 'game-05') return <img src={LSD_RES('assets/pack/suitcase.png')} alt="Suitcase" draggable="false" style={{ display: 'block', height: 150, width: 'auto', filter: 'drop-shadow(0 12px 14px rgba(0,0,0,.18))' }} />;
+  if (id === 'game-09') return <div className="gp-n3"><img className="gp-duck" src={LSD_RES('assets/duck-suitcase.png')} alt="Duck with a suitcase, flying south" draggable="false" /></div>;
+  if (id === 'game-14') return <img src={LSD_RES('assets/cooler/cooler.png')} alt="Cooler box full of ice" draggable="false" style={{ display: 'block', height: 160, width: 'auto', filter: 'drop-shadow(0 12px 14px rgba(0,0,0,.18))' }} />;
+  if (id === 'game-15') return <div className="aae-prev"><span className="aae-mini p">The auntie saw <span className="nl-blank"></span> and said “no laka.”</span><span className="aae-mini a">socks with slops</span></div>;
+  if (id === 'game-11') return <div className="row" style={{ gap: 10, justifyContent: 'center' }}><span className="gp-card w">Shot</span><span className="gp-card m">Thank you</span><span className="gp-card down"><span className="lbl">Snap</span></span></div>;
+  if (id === 'game-12') return <div className="gp-lf">{'KSHOTAWIEBRUPZLO'.split('').map((c, i) => <span key={i} className={[1, 2, 3, 4].includes(i) ? 'on' : ''}>{c}</span>)}</div>;
+  if (id === 'game-13') return <div className="gp-dc">{['S', 'H', 'O', 'T', '', '', '', 'O', '', '', '', 'P', '', '', '', 'S'].map((c, i) => <span key={i} className={c ? '' : 'v'}>{c}</span>)}</div>;
+  return <div className="hl" style={{ fontSize: 64 }}>14:00</div>;
+}
+
+function ActivitiesScreen({ sub }) {
+  const [points] = useStored('lsd2-points', {});
+  const [kicBest] = useStored('lsd2-kic-best', 0);
+  if (sub && GAMES2.some(g => g.id === sub)) return <GameScreen2 id={sub} />;
+  return (
+    <div>
+      <PageHead index="02" kicker="Twelve games · one Class Rankings" title="Games">
+        <p className="lead" style={{ margin: 0 }}>Twelve games for practical study. Three of them are dailies: a fresh puzzle at midnight, one go each. Your best in each game goes on the Class Rankings, and therefore your permanent record. Except the aunties. That one is for honour.</p>
+      </PageHead>
+      <MiniBoard />
+      {[['The dailies · new at midnight · one go each', GAMES2.filter(g => DAILIES.includes(g.id))], ['The rest · replay all you like', GAMES2.filter(g => !DAILIES.includes(g.id))]].map(([label, list]) => (
+        <section key={label} className="games-grp">
+          <div className="lbl muted games-lbl">{label}</div>
+          <div className="games">
+            {list.map(g => (
+              <a key={g.id} href={'#activities/' + g.id} className="card game-tile">
+                <div className="game-prev"><GamePreview id={g.id} /></div>
+                <div className="game-body">
+                  <div className="between lbl"><span className="blue">{gameNo(g.id)}</span><span className={points[g.id] ? 'blue' : 'muted'}>{points[g.id] ? 'Best ' + ptsFmt(points[g.id]) + ' marks' : g.tag}</span></div>
+                  <h3 className="hl">{g.t}</h3>
+                  <p>{g.d}</p>
+                  {g.id === 'game-14' && <span className="lbl muted">{+kicBest ? 'Longest run · ' + kcClock(+kicBest) + ' · the sun is still going' : 'Longest run · none yet. The prawns are waiting.'}</span>}
+                  <span className="btn line sm" style={{ alignSelf: 'flex-start', marginTop: 'auto' }}>{g.b || 'Play, bru'}</span>
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function GameScreen2({ id }) {
+  const g = GAMES2.find(x => x.id === id);
+  const h = g.h || g.t;
+  const C = { 'game-02': VaalieGame2, 'game-03': JaGame2, 'game-04': DurdleGame2, 'game-05': PackGame2, 'game-07': BraaiClockGame, 'game-08': ForkPatrolGame, 'game-09': MigrationGame, 'game-14': KeepItColdGame, 'game-11': SnapGame, 'game-12': LostFoundGame, 'game-13': DeckChairGame, 'game-15': AuntiesGame }[id];
+  return (
+    <div>
+      <div className="ph" style={{ paddingBottom: 28 }}>
+        <div className="row"><a className="btn primary sm" href="#activities">← Back to games</a><span className="lbl blue">{gameNo(id)}</span><span className="lbl muted">{g.tag}</span></div>
+        <h1 className="hl">{h.split(' ').slice(0, -1).join(' ')}{h.includes(' ') ? ' ' : ''}<Sel>{h.split(' ').pop()}</Sel></h1>
+        <p className="lead" style={{ margin: 0 }}>{g.s || g.d}</p>
+      </div>
+      <div className="card game-stage"><C /></div>
+      <div className="row" style={{ marginTop: 24 }}><a className="btn line sm" href="#activities">← Back to games</a>{!g.honour && <a className="btn line sm" href="#leaderboard">See the Class Rankings</a>}</div>
+    </div>
+  );
+}
+
+Object.assign(window, { ActivitiesScreen });

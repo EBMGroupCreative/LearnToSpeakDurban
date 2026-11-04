@@ -1,0 +1,217 @@
+// Joburg vs Durban today + countdown to December. Live from Open-Meteo, with fallbacks.
+const WX_FALLBACK = { jhb: { t: 22, c: 2 }, cpt: { t: 19, c: 3 }, dbn: { t: 27, c: 1 }, sea: 24, cptSea: 15, live: false };
+const wxText = c => c === 0 ? 'Clear' : c <= 3 ? 'Partly cloudy' : c <= 48 ? 'Fog' : c <= 67 ? 'Rain' : c <= 77 ? 'Snow (allegedly)' : c <= 82 ? 'Showers' : 'Thunderstorm';
+
+const seaOf = (m, i, f) => { const x = Array.isArray(m) ? m[i] : i === 0 ? m : null; const t = x && x.current && x.current.sea_surface_temperature; return t != null ? Math.round(t) : f; };
+
+function useDurbanWeather() {
+  const [wx, setWx] = React.useState(window.__lsdWx || WX_FALLBACK);
+  React.useEffect(() => {
+    if (window.__lsdWx) return;
+    const a = fetch('https://api.open-meteo.com/v1/forecast?latitude=-26.2041,-33.9249,-29.8587&longitude=28.0473,18.4241,31.0218&current=temperature_2m,weather_code,wind_speed_10m&timezone=Africa%2FJohannesburg').then(r => r.json());
+    const b = fetch('https://marine-api.open-meteo.com/v1/marine?latitude=-29.87,-33.95&longitude=31.06,18.37&current=sea_surface_temperature').then(r => r.json()).catch(() => null);
+    Promise.all([a, b]).then(([w, m]) => {
+      const j = w[0].current, k = w[1].current, d = w[2].current;
+      const v = { jhb: { t: Math.round(j.temperature_2m), c: j.weather_code }, cpt: { t: Math.round(k.temperature_2m), c: k.weather_code, w: k.wind_speed_10m }, dbn: { t: Math.round(d.temperature_2m), c: d.weather_code }, sea: seaOf(m, 0, WX_FALLBACK.sea), cptSea: seaOf(m, 1, WX_FALLBACK.cptSea), live: true };
+      window.__lsdWx = v; setWx(v);
+    }).catch(() => {});
+  }, []);
+  return wx;
+}
+
+// Punchlines. Every group whose conditions match today goes into one pool; one line is picked at random.
+// If nothing matches, the fallback group is used. {jhb} {ct} {dbn} = air °C, {ct_ocean} {dbn_ocean} = sea °C, {ocean_diff} = Durban sea minus Cape Town sea.
+// Weather codes are WMO: rain = drizzle, rain, showers or thunder; storm = thunder (95+); hail = 96 or 99. Windy = 30 km/h or more.
+const wxRain = c => (c >= 51 && c <= 67) || (c >= 80 && c <= 82) || c >= 95;
+const WX_GROUPS = [
+  { when: x => x.jhb > x.ct && x.jhb > x.dbn, lines: [
+    'Joburg is warmer today. Enjoy it. Durban is {dbn_ocean}° in the water, which is where we are.',
+    'Warmer in Joburg today. Still no sea, though.',
+    'Joburg has the higher number. Durban has the Indian Ocean at {dbn_ocean}°. Choose wisely.',
+    '{jhb}° in Joburg and nowhere to swim. Durban’s sea is {dbn_ocean}°. Just saying.',
+    'Joburg wins today. The prize is a sprinkler.',
+    '{jhb}° in Joburg. Lovely weather for the N3.',
+    'Joburg takes the top spot. Durban takes the beach.',
+    'Hot in Joburg? The nearest cool-down is six hours down the N3.',
+    'A {jhb}° day in Joburg is a {dbn_ocean}° swim in Durban, if you’re willing to drive.',
+    'Joburg is hotter. Durban is cooler, and it’s right next to the beach.',
+  ] },
+  { when: x => x.ct > x.jhb && x.ct > x.dbn, lines: [
+    'Cape Town is warmer today. It doesn’t happen often, so we’ll allow it. Their sea is still {ct_ocean}°.',
+    'Cape Town wins on the air today. Their Atlantic is {ct_ocean}°. Our ocean is {dbn_ocean}°.',
+    'Good day in Cape Town. Bring a jersey for the swim.',
+    'Cape Town is {ct}° today. Nobody told the sea.',
+    'Warmest in Cape Town. Coldest sea, too. Funny how that works.',
+    'Cape Town takes the day. Durban takes the {dbn_ocean}° swim.',
+    '{ct}° in Cape Town. Great beach weather, apart from the water.',
+    'Cape Town wins. The penguins are unimpressed.',
+    ['Cape Town is warmer today. Durban’s sea is {ocean_diff}° warmer where it counts.', x => x.ocean_diff > 0],
+  ] },
+  { when: x => x.dbn > x.jhb && x.dbn > x.ct, lines: [
+    '{dbn}° in Durban. Warmest of the three. As usual.',
+    'Warmest city, warmest water. Durban doesn’t like to brag. That’s just the numbers.',
+    'Durban’s on top today, and the sea’s {dbn_ocean}°. You know what to do.',
+    'Durban: {dbn}°. Everyone else: catching up.',
+    'Warmest city today. Warmest sea every day.',
+    'Durban wins, and you can swim in the prize.',
+    '{dbn}° and an ocean to match. Durban, as advertised.',
+    'Durban’s the warmest today. The sea was never in question.',
+    'Top of the table again. Durban feels a bit bad about it. Not very, though.',
+  ] },
+  { when: x => x.dbnRain, lines: [
+    'It’s raining in Durban. The sea’s still {dbn_ocean}°. You were going to get wet anyway.',
+    'Rain in Durban today. Warm rain, which is a different thing entirely.',
+    'Rainy day in Durban. Good thing Gateway has a roof.',
+    'Rain in Durban, and it’s still {dbn}°. Most cities would call that a nice day.',
+    'Rain in Durban. Perfect shopping weather.',
+    'Wet outside, warm in the water. {dbn_ocean}° in Durban today.',
+    'Rain in Durban. Umbrella optional, swimsuit recommended.',
+    'A bit of rain in Durban. The palm trees don’t mind.',
+  ] },
+  { when: () => true, lines: [
+    ['Joburg has a thunderstorm booked for 4pm. Durban has the beach booked for 4pm.', x => x.jhbStorm],
+    ['Joburg storm at 4pm, right on schedule. Durban’s sea is {dbn_ocean}° either way.', x => x.jhbStorm],
+    ['Storm on the Highveld. Warm water on the coast: {dbn_ocean}°.', x => x.jhbStorm],
+    ['Joburg’s getting hail. Durban’s getting a tan.', x => x.jhbHail && !x.dbnRain],
+    ['Thunderstorm warning in Joburg. Beach warning in Durban: it’s lovely.', x => x.jhbStorm && !x.dbnRain],
+    ['Wet in Joburg, wet in Cape Town. In Durban, only the swimmers are wet.', x => x.jhbRain && x.ctRain && !x.dbnRain],
+    ['Rain in Cape Town. In Durban, the sea’s {dbn_ocean}° and the umbrellas are for shade.', x => x.ctRain && !x.dbnRain],
+    ['Rain in Cape Town. Rain in Durban too, but ours is warmer.', x => x.ctRain && x.dbnRain],
+    ['Cape Town’s windy again. Durban’s sea is {dbn_ocean}° and your hair is safe.', x => x.ctWindy],
+    ['Durban is {d}° warmer. The ocean is warmer than your office. We checked both.', x => x.d >= 4],
+    ['Durban is {d}° warmer. Plus a whole ocean. Joburg has Emmerentia Dam, where the biggest swell is a duck landing.', x => x.d > 0 && x.d < 4],
+    ['Same temperature. One of you has an ocean. Hint: it’s not the one with the mine dumps.', x => x.d === 0],
+  ] },
+];
+const WX_FALLBACK_LINES = [
+  'The weather changes. Durban’s sea stays warm. {dbn_ocean}° today.',
+  'Three cities. One warm ocean.',
+  'Harties is not the sea. This is the sea: {dbn_ocean}°.',
+  'Whatever the weather, Durban’s sea is {dbn_ocean}°.',
+  'Joburg has gold. Cape Town has a mountain. Durban has a sea you can get into.',
+  'Check the weather, then check the sea. Durban: {dbn_ocean}°.',
+  'The forecast moves around. Durban’s sea doesn’t. {dbn_ocean}° today.',
+  'Of these three, only one has a sea you can get into without screaming.',
+  'Your weather app shows three cities. Only one has a warm sea.',
+];
+function wxLine(wx) {
+  const x = { jhb: wx.jhb.t, ct: wx.cpt.t, dbn: wx.dbn.t, ct_ocean: wx.cptSea, dbn_ocean: wx.sea, ocean_diff: wx.sea - wx.cptSea, d: wx.dbn.t - wx.jhb.t,
+    jhbRain: wxRain(wx.jhb.c), ctRain: wxRain(wx.cpt.c), dbnRain: wxRain(wx.dbn.c), jhbStorm: wx.jhb.c >= 95, jhbHail: wx.jhb.c === 96 || wx.jhb.c === 99, ctWindy: (wx.cpt.w || 0) >= 30 };
+  const pool = [];
+  WX_GROUPS.forEach(g => { if (g.when(x)) g.lines.forEach(l => { if (typeof l === 'string') pool.push(l); else if (l[1](x)) pool.push(l[0]); }); });
+  const list = [...new Set(pool.length ? pool : WX_FALLBACK_LINES)];
+  return list[Math.floor(Math.random() * list.length)].replace(/\{(\w+)\}/g, (m, k) => x[k] ?? m);
+}
+
+// Dezemba support lines: one is drawn at random per page load (2–31 Dezemba). {n} = days remaining, same number as the headline. Add a line = add a string.
+const DEZ_LINES = [
+  'Guff accordingly.',
+  'That’s {n} guffs. Minimum.',
+  'Janu-worry is doing push-ups.',
+  'The tide is counting too.',
+  'Each one comes with a beach.',
+  'Spend them at sea level.',
+  'None of them are for admin.',
+  'The sea expects attendance.',
+  'Sleep in Janu-worry.',
+  'The cooler box knows.',
+  'HR can’t take these ones.',
+  'All of them swimmable.',
+];
+const dezLine = (i, n) => DEZ_LINES[i % DEZ_LINES.length].replace('{n}', n).replace(/\b1 guffs\b/, '1 guff');
+// Module state from the live date: pre (countdown) · day1 (1 Dezemba) · dez (2–31, n = days remaining incl. today) · jan (Janu-worry, day n).
+function dezPhase(now) {
+  const m = now.getMonth(), d = now.getDate();
+  if (m === 11) return d === 1 ? { phase: 'day1' } : { phase: 'dez', n: 32 - d };
+  if (m === 0) return { phase: 'jan', n: d };
+  return { phase: 'pre' };
+}
+
+function useCountdown(target) {
+  const [now, setNow] = React.useState(lsdNow);
+  React.useEffect(() => { const t = setInterval(() => setNow(lsdNow()), 1000); return () => clearInterval(t); }, []);
+  const dec = target || new Date(now.getFullYear(), 11, 1);
+  const inDec = now.getMonth() === 11, dz = dezPhase(now);
+  const ms = Math.max(0, dec - now);
+  return { inDec, ...dz, open: now >= dec, days: Math.floor(ms / 864e5), h: Math.floor(ms / 36e5) % 24, m: Math.floor(ms / 6e4) % 60, s: Math.floor(ms / 1e3) % 60 };
+}
+
+function TodayStrip() {
+  const wx = useDurbanWeather();
+  const wxPick = React.useMemo(() => wxLine(wx), [wx]);
+  const cd = useCountdown();
+  const [li] = React.useState(() => Math.floor(Math.random() * DEZ_LINES.length));
+  return (
+    <section className="today">
+      <div className="card wx">
+        <div className="between lbl"><span className="blue">Joburg vs Cape Town vs Durban · today</span><span className="muted">{wx.live ? 'Live' : 'Typical'} · °C</span></div>
+        <div className="wx-row">
+          <div className="wx-c">
+            <span className="lbl muted">Joburg</span>
+            <div className="hl wx-t">{wx.jhb.t}°</div>
+            <div className="wx-s">{wxText(wx.jhb.c)}</div>
+            <div className="lbl muted">Ocean: none. Emmerentia doesn’t count.</div>
+          </div>
+          <div className="wx-c">
+            <span className="lbl muted">Cape Town</span>
+            <div className="hl wx-t">{wx.cpt.t}°</div>
+            <div className="wx-s">{wxText(wx.cpt.c)}</div>
+            <div className="lbl muted"><span className="blue">{'Ocean: ' + wx.cptSea + '°'}</span>{' · two oceans, still cold, ask a penguin.'}</div>
+          </div>
+          <div className="wx-c">
+            <span className="lbl blue">Durban</span>
+            <div className="hl wx-t"><Sel>{wx.dbn.t}°</Sel></div>
+            <div className="wx-s">{wxText(wx.dbn.c)}</div>
+            <div className="lbl muted"><span className="blue">{'Ocean: ' + wx.sea + '°'}</span>{' · open all year'}</div>
+          </div>
+        </div>
+        <div className="wx-line">{wxPick}</div>
+      </div>
+      {cd.phase === 'day1' ? <div className="card cd cd-day1 on-blue">
+        <span className="lbl">1 Dezemba · one day only</span>
+        <div className="hl cd-n">It’s <Sel>Dezemba.</Sel></div>
+        <div className="cd-day1-t">Class is in session. The exam is open.</div>
+        <a className="btn line inv" href="#exam" style={{ alignSelf: 'flex-start' }}>[ Sit the exam ]</a>
+      </div> : cd.phase === 'dez' ? <div className="card cd">
+        <span className="lbl blue">Janu-worry approaches · nobody is ready</span>
+        <div className="hl cd-dl">Dezemba:</div>
+        <div className="cd-big"><span className="hl cd-n"><Flip v={cd.n} /></span><span className="hl cd-dl">{cd.n === 1 ? 'day remaining.' : 'days remaining.'}</span></div>
+        <div className="wx-line">{dezLine(li, cd.n)}</div>
+      </div> : cd.phase === 'jan' ? <div className="card cd">
+        <span className="lbl blue">Durban doesn’t close when Dezemba does</span>
+        <div className="cd-big"><span className="hl cd-dl">Janu-worry, day</span><span className="hl cd-n"><Sel>{cd.n + '.'}</Sel></span></div>
+        <div className="wx-line">The water is still warm. Just saying.</div>
+      </div> : <div className="card cd">
+        <span className="lbl blue">Countdown to 1 Dezemba</span>
+        <>
+          <div className="cd-big"><span className="hl cd-n"><Flip v={cd.days} /></span><span className="hl cd-dl">{cd.days === 1 ? 'day' : 'days'}</span></div>
+          <div className="cd-units">{[[cd.h, 'Hrs'], [cd.m, 'Min'], [cd.s, 'Sec']].map(([v, k]) => <div key={k} className="cd-u"><b><Flip v={pad2(v)} /></b><span className="lbl muted">{k}</span></div>)}</div>
+          <div className="hl" style={{ fontSize: 'clamp(24px, 2.2vw, 34px)' }}>until you <Sel>vy.</Sel></div>
+          <div className="lbl muted">Book leave now. HR is slower than the N3. Janu-worry can wait.</div>
+        </>
+      </div>}
+    </section>
+  );
+}
+
+const KIT_TABS = [['postcard', 'Postcard to Joburg', 'Write it in English. It arrives in Durban.'], ['ooo', 'Out-of-office', 'Your “I’ve ducked out” auto-reply, in speak Durban.'], ['quiz', 'How Durban are you?', 'Eight questions. One result card. One humbled bru.']];
+
+function DuckKitScreen({ sub }) {
+  const tab = KIT_TABS.some(t => t[0] === sub) ? sub : 'postcard';
+  return (
+    <div>
+      <PageHead index="10" kicker="Lesson 16, applied" title="The ducking-out kit">
+        <p className="lead" style={{ margin: 0 }}>Everything you need to leave Joburg quietly: a postcard to gloat with, an auto-reply to hide behind, and proof you’re more Durban than your bru.</p>
+      </PageHead>
+      <div className="kit-tabs">
+        {KIT_TABS.map(([id, l, d], i) => <a key={id} href={'#kit/' + id} className={'card kt' + (tab === id ? ' on' : '')}><span className="lbl blue">{pad2(i + 1)}</span><span className="hl kt-t">{l}</span><span className="kt-d">{d}</span></a>)}
+      </div>
+      {tab === 'postcard' && <PostcardTool />}
+      {tab === 'ooo' && <OooTool />}
+      {tab === 'quiz' && <DurbanQuiz />}
+      <div className="sec" style={{ paddingTop: 96 }}><TodayStrip /></div>
+    </div>
+  );
+}
+
+Object.assign(window, { DEZ_LINES, dezPhase, TodayStrip, DuckKitScreen, useDurbanWeather, useCountdown });

@@ -1,0 +1,56 @@
+const EK_SAMPLES = [
+  ['Work email', 'Hello team, honestly the new project is great. Watch out for the deadline on Friday. Thanks, I am leaving early to go home.'],
+  ['Text home', 'Hi! The food here is amazing and the weather is lovely. I really like it. Let’s go to the party tonight.'],
+  ['Holiday plan', 'Friend, I’m telling you, we should go to the beach. It will be awesome. Yes?'],
+];
+
+function TranslateScreen() {
+  const [text, setText] = React.useState(EK_SAMPLES[0][1]);
+  const [copied, copy] = useCopy();
+  const [hov, setHov] = React.useState(-1);
+  const ta = React.useRef(null);
+  // Mode A (private): profanity is masked, slurs and sexual violence hard-block. See ekselator.js.
+  // PRODUCTION: route all free text through a server-side moderation API (e.g. OpenAI Moderation / Azure AI Content Safety) PLUS this custom SA wordlist before rendering. Client-side filtering is a placeholder and must not ship as the only defence. Shareable text and Submit a word entries should also be human-reviewed where feasible.
+  const run = React.useMemo(() => ekRun(text), [text]);
+  const segs = run.segs, hits = run.hits;
+  const again = () => { setText(''); setTimeout(() => ta.current && ta.current.focus(), 0); };
+  const lessonOf = w => window.LSD2.lessons.find(l => l.w.toLowerCase() === w.toLowerCase() || l.w.toLowerCase().split(' ')[0] === w.toLowerCase());
+  const plain = segs.map(s => typeof s === 'string' ? s : s.s).join('');
+  return (
+    <div>
+      <PageHead index="04" kicker="Inland to coastal" title="The Ekselator">
+        <p className="lead" style={{ margin: 0 }}>Paste in anything written inland: a work email, a group-chat apology, your gran’s WhatsApp. It comes back coastal. Hover a word to see what it used to be.</p>
+      </PageHead>
+      <div className="row" style={{ marginBottom: 20 }}>
+        <span className="lbl muted">Try</span>
+        {EK_SAMPLES.map(([n, t]) => <button key={n} type="button" className={'chip' + (text === t ? ' on' : '')} onClick={() => setText(t)}>{n}</button>)}
+      </div>
+      <div className="tr">
+        <div className="card tr-pane">
+          <div className="between lbl"><span>English (inland)</span><span className="muted">{text.length} chars</span></div>
+          <textarea ref={ta} className="tr-in" value={text} onChange={e => setText(e.target.value)} placeholder="Paste anything written inland. A work email works best. The more ‘per my last email’, the better."></textarea>
+        </div>
+        <div className="card tr-pane">
+          <div className="between lbl"><span className="blue">Durban (coastal)</span><span className="muted">Live</span></div>
+          {run.blocked ? <div className="tr-out">No, bru. Not here, not anywhere. Try again.</div> : <div className="tr-out">
+            {segs.map((s, i) => {
+              if (typeof s === 'string') return <React.Fragment key={i}>{s}</React.Fragment>;
+              const l = lessonOf(s.s);
+              return <span key={i} className="tok" onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(-1)}>
+                <Sel handles={hov === i}>{s.s}{hov === i && <Pop items={s.extra ? ['Added by Gateway'] : l ? ['was “' + s.orig + '”', 'Lesson ' + l.n] : ['was “' + s.orig + '”']} active={1} />}</Sel>
+              </span>;
+            })}
+          </div>}
+          {!run.blocked && text.trim() && <div className="lbl muted">{run.fluent ? 'Already fluent. Suspicious, but fluent.' : hits + (hits === 1 ? ' word' : ' words') + ' translated · fluency rising'}</div>}
+          <div className="row" style={{ marginTop: 'auto' }}>
+            <button type="button" className="btn primary sm" disabled={run.blocked || !text.trim()} onClick={() => copy(plain)}>{copied ? 'Copied. Send it.' : 'Copy'}</button>
+            <button type="button" className="btn line sm" onClick={again}>Translate another</button>
+            <a className="btn line sm" href="#lessons/01">Learn these properly</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { TranslateScreen });

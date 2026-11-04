@@ -1,0 +1,330 @@
+// Two games: The Great Migration and Snap ekse. (Keep it cold lives in KeepItCold.jsx.)
+// Snap caps at 1,000; The Great Migration is an arcade score with no cap. Clocks use real elapsed time (performance.now) and
+// pause, together with the game, the moment the tab is hidden or the window loses focus.
+const ngShuffle = a => { const o = [...a]; for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; } return o; };
+const ngPick = a => a[Math.floor(Math.random() * a.length)];
+const ngSec = t => (Math.max(0, t)).toFixed(1) + 's';
+const ngTyping = e => /^(INPUT|TEXTAREA|SELECT)$/.test((e.target || {}).tagName || '');
+
+// rAF loop in real time. Large gaps (> 0.5s, e.g. a stalled tab) are dropped, never credited.
+function useRunLoop(active, step) {
+  const ref = React.useRef(step); ref.current = step;
+  React.useEffect(() => {
+    if (!active) return;
+    let raf, last = performance.now();
+    const f = now => {
+      let dt = (now - last) / 1000; last = now;
+      if (dt > 0.5) dt = 0;
+      while (dt > 0) { const h = Math.min(dt, 1 / 60); if (ref.current(h) === false) return; dt -= h; }
+      raf = requestAnimationFrame(f);
+    };
+    raf = requestAnimationFrame(f);
+    return () => cancelAnimationFrame(raf);
+  }, [active]);
+}
+function useBlurPause(active, onPause) {
+  const ref = React.useRef(onPause); ref.current = onPause;
+  React.useEffect(() => {
+    if (!active) return;
+    const p = () => ref.current(), v = () => { if (document.hidden) p(); };
+    addEventListener('blur', p); document.addEventListener('visibilitychange', v);
+    return () => { removeEventListener('blur', p); document.removeEventListener('visibilitychange', v); };
+  }, [active]);
+}
+// Re-render when the game area changes size (first paint, rotation, resize).
+function useAreaSize(ref) {
+  const [, set] = React.useState(0);
+  React.useEffect(() => { const el = ref.current; if (!el || !window.ResizeObserver) return; const ro = new ResizeObserver(() => set(x => x + 1)); ro.observe(el); return () => ro.disconnect(); }, []);
+}
+function NgPaused({ onResume }) {
+  return <div className="ng-pause"><span className="lbl blue">Paused</span><div className="hl" style={{ fontSize: 'clamp(36px, 4vw, 56px)' }}>You looked <Sel>away.</Sel></div><p className="lead" style={{ margin: 0, textAlign: 'center' }}>So did the clock. Fair’s fair.</p><button type="button" className="btn primary" onClick={onResume}>[ Carry on ]</button></div>;
+}
+
+// ── GAME: THE GREAT MIGRATION ────────────────────────────────────────────────
+// Distance = 840 units. Speed climbs with time from GM_V0 to GM_V1 over the first ≈90s, then holds (≈3:20 if you never wobble). Work comes in rows that get closer and fuller as it speeds up; each row leaves a path lane open that only ever shifts one lane, so every run is survivable. An obstacle slows the duck (half speed, 1.2s wobble) and costs a heart; three and the run ends.
+// Arcade score, no cap: 10 per metre flown; 100 per mango / litchi / slops / pineapple / soft serve / watermelon / beach ball / coconut, 500 per flamingo (rare), 250 per music note (radio stretch),
+// all pickups × the combo (×1, +1 every 5 pickups in a row, max ×8; a wobble resets it) × the speed level (1–5, from current speed), so the same mango is worth more later.
+// Hitting work costs a heart AND 300 × speed level points (never below 0). Sugar rush: 250 × speed level per piece of work smashed.
+// Landing: +5,000 through the Moses Mabhida arch, +2,500 per heart left, +10,000 for no wobbles.
+// One power-up: the granadilla lolly (sugar rush: 1.6× speed, untouchable for GM_BOOST s). It melts if you're slow.
+const GM_D = 840, GM_VIEW = 4.6, GM_DUCKY = 0.82, GM_AR = 253 / 240, GM_CHIP_H = 34, GM_SLOW = 1.2, GM_MELT = 8, GM_GAP = 0.85, GM_BOOST = 4;
+const GM_STEER = 640, GM_STEER_UP = 90, GM_SIDE = 0.5; // steering in px/s (scaled up a little with speed), +px/s per speed unit; pickup width in lanes
+const GM_HEARTS = 3; // three wobbles and the duck is grounded
+const GM_ARCH_D = GM_D - 2, GM_RADIO = 0.85, GM_V0 = 1, GM_V1 = 5, GM_ACC = 0.045; // base speed: GM_V0 + GM_ACC·t, capped at GM_V1
+const gmV = t => Math.min(GM_V1, GM_V0 + GM_ACC * t);
+const GM_TIERS = [[2, 'PICKING UP SPEED. THE COAST IS PULLING.'], [3.5, 'FULL FLAP. DUCKS DON’T HAVE BRAKES.'], [GM_V1, 'TOP SPEED. THE N3 HAS NEVER SEEN THIS.']];
+const GM_BAD = ['Email', 'Boss', 'Meeting', 'Laptop', 'Printer', 'Alarm', 'Thundercloud', 'Bell', 'Spreadsheet', 'Inbox'];
+const GM_GOOD = ['Mango', 'Litchi', 'Slops', 'Pineapple', 'SoftServe', 'Watermelon', 'BeachBall', 'Coconut'];
+// Kinds come out of a shuffled bag (every kind once before any repeats). Flamingo (rare) ≈ 1 in 26 pickups.
+const gmDraw = (s, key, arr) => { if (!s[key] || !s[key].length) s[key] = ngShuffle(arr); return s[key].pop(); };
+const GM_VAL = { Note: 250, Flamingo: 500 }; // everything else 100
+const GM_M = 10, GM_SMASH = 250, GM_HIT = 300, GM_ARCH = 5000, GM_HEART_B = 2500, GM_CLEAN = 10000, GM_COMBO = 5, GM_XMAX = 8;
+const gmX = c => Math.min(GM_XMAX, 1 + Math.floor(c / GM_COMBO));
+const gmLvl = vb => Math.max(1, Math.min(5, Math.floor(vb)));
+const gmScore = n => String(Math.floor(n)).padStart(7, '0').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const GM_LABEL = { Email: 'Email', Boss: 'BOSS calling', Meeting: 'MEETING', Laptop: 'Laptop', Printer: 'Printer', Alarm: 'Alarm clock', Thundercloud: 'Thundercloud', Bell: 'Bell', Spreadsheet: 'Spreadsheet', VideoCall: 'Video call', Tie: 'Tie', Inbox: 'Inbox', Pineapple: 'Pineapple', SoftServe: 'Soft serve', Watermelon: 'Watermelon', BeachBall: 'Beach ball', Coconut: 'Coconut', Flamingo: 'Flamingo', Mango: 'Mango', Litchi: 'Litchi', Slops: 'Slops', Lolly: 'Granadilla lolly', Note: 'Music note', Wind: 'Berg Wind', Shades: 'Sunglasses' };
+// Drop-in art: set a key to an image path (e.g. LSD_RES('assets/migration/email.png')) and that item renders as the image instead of a chip.
+const GM_ART = { Email: LSD_RES('assets/migration/email.png'), Boss: LSD_RES('assets/migration/boss.png'), Meeting: LSD_RES('assets/migration/meeting.png'), Laptop: LSD_RES('assets/migration/laptop.png'), Alarm: LSD_RES('assets/migration/alarm.png'), Thundercloud: LSD_RES('assets/migration/thundercloud.png'), Mango: LSD_RES('assets/migration/mango.png'), Litchi: LSD_RES('assets/migration/litchi.png'), Lolly: LSD_RES('assets/migration/lolly.png'), Slops: LSD_RES('assets/migration/slops.png'), Shades: LSD_RES('assets/migration/shades.png'), Inbox: LSD_RES('assets/migration/inbox.png'), Pineapple: LSD_RES('assets/migration/pineapple.png'), Bell: LSD_RES('assets/migration/bell.png'), SoftServe: LSD_RES('assets/migration/softserve.png'), Watermelon: LSD_RES('assets/migration/watermelon.png'), BeachBall: LSD_RES('assets/migration/beachball.png'), Coconut: LSD_RES('assets/migration/coconut.png'), Flamingo: LSD_RES('assets/migration/flamingo.png'), Printer: LSD_RES('assets/migration/printer.png'), Spreadsheet: LSD_RES('assets/migration/spreadsheet.png') };
+// Art is drawn at equal visual area (≈60×60), longest side capped at 76px, so tall and wide pieces read the same size.
+const GM_ART_DIM = { Email: [192, 186], Boss: [174, 192], Meeting: [192, 178], Laptop: [192, 191], Alarm: [192, 178], Thundercloud: [192, 180], Mango: [155, 192], Litchi: [181, 192], Lolly: [105, 192], Slops: [172, 192], Shades: [192, 84], Inbox: [168, 192], Pineapple: [122, 192], Bell: [192, 99], SoftServe: [108, 192], Watermelon: [186, 192], BeachBall: [180, 192], Coconut: [163, 192], Flamingo: [191, 192], Printer: [192, 185], Spreadsheet: [192, 167] };
+const gmArtSize = k => { const [w, h] = GM_ART_DIM[k] || [1, 1], r = w / h; let hh = Math.sqrt(60 * 60 / r), ww = hh * r; const m = Math.max(ww, hh); if (m > 76) { ww *= 76 / m; hh *= 76 / m; } return [Math.round(ww), Math.round(hh)]; };
+const GM_MARKS = [[GM_RADIO, 'RADIO: NOW PLAYING GQOM.']];
+// Half-width in px of what can actually touch the duck: art at ~80% of its box (PNG edges are soft), chips by label length.
+const gmHalfW = k => GM_ART[k] ? gmArtSize(k)[0] * 0.4 : (String(GM_LABEL[k] || k).length * 7.8 + 26) * 0.42;
+const GM_PUFFS = [[0.08, 150], [0.72, 110], [0.34, 90], [0.9, 140], [0.18, 120], [0.58, 100]];
+const gmLanes = w => w >= 900 ? 5 : 3; // wide screens get five lanes so the duck can use the whole sky
+const gmLaneW = (w, n) => Math.min(w * 0.9, n * 200);
+// One geometry for physics and drawing. Sizes are tied to px-per-unit so a short screen shrinks the sprites with the spacing
+// (otherwise rows end up closer together than the duck is tall and gaps can't be flown through). Very short screens see a little less ahead.
+const gmGeo = (W, H, nl) => { const laneW = gmLaneW(W, nl), lw = laneW / nl, duckY = H * GM_DUCKY, ppu = Math.max(duckY / GM_VIEW, 80), sc = Math.max(0.72, Math.min(1.1, ppu / 120)), duckW = Math.min(lw * 0.5, 78 * sc); return { laneW, lw, ll: (W - laneW) / 2, duckY, ppu, view: duckY / ppu, sc, duckW, duckH: duckW * GM_AR }; };
+const gmLesson38 = () => { const l = ((window.LSD2 || {}).lessons || []).find(x => x.n === '41'); return l ? 'LESSON 41 · ' + l.w.toUpperCase() + ': ' + l.d.replace(/\.$/, '').toUpperCase() + '.' : 'LESSON 41 · THUNDERCLOUD: A SMACK.'; };
+
+// The Great Migration sound effects: all synthesised, no files. Quack on a wobble, bright plinks that climb with the combo.
+const gmAudio = { ctx: null, on: true };
+function gmSnd(name, n) {
+  if (!gmAudio.on) return;
+  let c = gmAudio.ctx; if (!c) { try { c = gmAudio.ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; } }
+  if (c.state === 'suspended') c.resume();
+  const now = c.currentTime, out = c.destination;
+  const tone = (type, f0, f1, dur, vol, dl = 0) => { const o = c.createOscillator(), v = c.createGain(); o.type = type; o.frequency.setValueAtTime(f0, now + dl); o.frequency.exponentialRampToValueAtTime(Math.max(30, f1), now + dl + dur); v.gain.setValueAtTime(0.0001, now + dl); v.gain.exponentialRampToValueAtTime(vol, now + dl + 0.012); v.gain.exponentialRampToValueAtTime(0.0001, now + dl + dur); o.connect(v).connect(out); o.start(now + dl); o.stop(now + dl + dur + 0.05); };
+  const noise = (dur, vol, freq, q = 1, dl = 0) => { const b = c.createBuffer(1, Math.ceil(c.sampleRate * dur), c.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length); const src = c.createBufferSource(), f = c.createBiquadFilter(), v = c.createGain(); src.buffer = b; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q; v.gain.value = vol; src.connect(f).connect(v).connect(out); src.start(now + dl); };
+  const quack = (dl, f0) => { const o = c.createOscillator(), f = c.createBiquadFilter(), v = c.createGain(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, now + dl); o.frequency.exponentialRampToValueAtTime(f0 * 0.62, now + dl + 0.16); f.type = 'bandpass'; f.frequency.value = 1100; f.Q.value = 3; v.gain.setValueAtTime(0.0001, now + dl); v.gain.exponentialRampToValueAtTime(0.22, now + dl + 0.02); v.gain.exponentialRampToValueAtTime(0.0001, now + dl + 0.17); o.connect(f).connect(v).connect(out); o.start(now + dl); o.stop(now + dl + 0.2); };
+  const k = Math.min(n || 0, 24);
+  if (name === 'go') { noise(0.35, 0.18, 700, 0.8); tone('sine', 330, 660, 0.22, 0.08, 0.05); }
+  else if (name === 'grab') { const f = 660 * Math.pow(2, (k % 12) / 24); tone('triangle', f, f * 1.5, 0.09, 0.09); tone('sine', f * 2, f * 2, 0.06, 0.03, 0.02); }
+  else if (name === 'flamingo') [880, 1109, 1319, 1760].forEach((f, i) => tone('triangle', f, f, 0.12, 0.08, i * 0.05));
+  else if (name === 'combo') { tone('square', 784, 784, 0.07, 0.05); tone('square', 1175, 1175, 0.12, 0.05, 0.07); }
+  else if (name === 'hit') { quack(0, 640); quack(0.17, 560); noise(0.12, 0.25, 220, 1.2); }
+  else if (name === 'smash') { noise(0.18, 0.35, 1800, 0.7); tone('square', 220, 80, 0.12, 0.06); }
+  else if (name === 'power') { tone('sawtooth', 300, 1200, 0.4, 0.05); tone('triangle', 600, 2400, 0.4, 0.05, 0.05); }
+  else if (name === 'level') [523, 659, 784].forEach((f, i) => tone('triangle', f, f, 0.1, 0.06, i * 0.07));
+  else if (name === 'grounded') { quack(0, 520); quack(0.2, 440); quack(0.42, 330); tone('sine', 220, 90, 0.6, 0.08, 0.5); }
+  else if (name === 'land') { noise(0.6, 0.2, 500, 0.5); [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, f, i === 3 ? 0.4 : 0.14, 0.07, 0.25 + i * 0.1)); }
+}
+
+function MigrationGame() {
+  const box = React.useRef(null), S = React.useRef(null);
+  const [phase, setPhase] = React.useState('ready');
+  const [sound, setSound] = useStored('lsd2-gm-sound', true);
+  gmAudio.on = !!sound;
+  const [paused, setPaused] = React.useState(false);
+  const [res, setRes] = React.useState(null);
+  const [, tick] = React.useState(0);
+  useAreaSize(box);
+  const start = () => { gmSnd('go'); const nl = gmLanes(box.current ? box.current.clientWidth : 640); S.current = { nl, hearts: GM_HEARTS, t: 0, p: 0, x: Math.floor(nl / 2), dir: 0, vx: 0, slowUntil: -1, boostUntil: -1, objs: [], id: 0, nextRowP: 2.5, path: Math.floor(nl / 2), dwell: 0, laneBag: [], tier: 0, nextCol: 0.6, nextPow: 12 + Math.random() * 6, cols: 0, pts: 0, arch: 0, hits: 0, dodged: {}, toast: null, toastT: 0, marks: {}, combo: 0, pops: [], hi: ((window.readPoints ? window.readPoints() : {})['game-09'] || 0) }; setRes(null); setPaused(false); setPhase('play');
+    // Bring the whole sky into view (HUD at the top of the screen) so items are seen arriving from the top edge.
+    setTimeout(() => { const el = box.current; if (!el) return; const top = (el.previousElementSibling || el).getBoundingClientRect().top + scrollY - 12; window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' }); }, 30); };
+  const playing = phase === 'play';
+  useBlurPause(playing && !paused, () => { if (S.current) { S.current.dir = 0; S.current.drag = null; S.current.tx = null; } setPaused(true); });
+  // Drag anywhere on the sky: the duck moves with your finger (relative, so your finger never covers it).
+  const grab = e => { const s = S.current; if (!playing || paused || !s) return; try { e.currentTarget.setPointerCapture(e.pointerId); } catch (x) {} s.drag = { cx: e.clientX, x0: s.x }; s.tx = s.x; };
+  const slide = e => { const s = S.current, el = box.current; if (!s || !s.drag || !el) return; const lw = gmGeo(el.clientWidth, el.clientHeight, s.nl).lw; s.tx = Math.max(0, Math.min(s.nl - 1, s.drag.x0 + (e.clientX - s.drag.cx) / lw)); };
+  const drop = () => { const s = S.current; if (s) { s.drag = null; s.tx = null; } };
+  const steer = d => { const s = S.current; if (!s || (d && (!playing || paused))) return; s.dir = d; };
+  React.useEffect(() => {
+    if (!playing) return;
+    const key = e => { const kk = e.key.toLowerCase(); return kk === 'arrowleft' || kk === 'a' ? -1 : kk === 'arrowright' || kk === 'd' ? 1 : 0; };
+    const dn = e => { if (ngTyping(e)) return; const d = key(e); if (d) { e.preventDefault(); steer(d); } };
+    const up = e => { const d = key(e), s = S.current; if (d && s && s.dir === d) s.dir = 0; };
+    addEventListener('keydown', dn); addEventListener('keyup', up); return () => { removeEventListener('keydown', dn); removeEventListener('keyup', up); };
+  });
+  React.useEffect(() => { if (phase !== 'land') return; const id = setTimeout(() => setPhase('over'), 2100); return () => clearTimeout(id); }, [phase]);
+  useRunLoop(playing && !paused, h => {
+    const s = S.current; if (!s || s.fin) return false;
+    const boost = s.t < s.boostUntil, vb = gmV(s.t), v = vb * (boost ? 1.6 : s.t < s.slowUntil ? 0.5 : 1);
+    s.t += h; s.p += v * h; s.pts += v * h * GM_M;
+    // Steering eases in (~0.04s) and out (~0.03s): responsive, but a tap is still a nudge rather than a lane jump.
+    // Dragging (touch or mouse): the duck chases the finger's target lane, capped a bit above key speed.
+    const el0 = box.current, g = gmGeo(el0 ? el0.clientWidth : 640, el0 ? el0.clientHeight : 540, s.nl), follow = s.tx != null, maxV = (GM_STEER * 1.6 + GM_STEER_UP * (vb - 1)) / g.lw;
+    const want = follow ? Math.max(-maxV, Math.min(maxV, (s.tx - s.x) * 18)) : s.dir * (GM_STEER + GM_STEER_UP * (vb - 1)) / g.lw, k = follow ? 40 : s.dir ? 24 : 32;
+    s.vx += (want - s.vx) * Math.min(1, k * h);
+    s.x += s.vx * h; if (s.x < 0 || s.x > s.nl - 1) { s.x = Math.max(0, Math.min(s.nl - 1, s.x)); s.vx = 0; }
+    const lv = gmLvl(vb), f = Math.min(1, s.p / GM_D), say = txt => { s.toast = txt; s.toastT = s.t; }, pop = (txt, big, bad) => s.pops.push({ id: s.id++, x: s.x, t: s.t, txt, big, bad });
+    const D0 = s.p + g.view + 60 / g.ppu; // spawn just above the top edge so items slide in, never pop in
+    if (s.p + g.view < GM_ARCH_D - 1) {
+      // Rows, not streams. Row spacing = 1.25 units (room for the duck between rows, sprites are ≈0.5–0.75u) + 0.55s of flying, tightening to 0.4s by 90s.
+      // Each row keeps a path lane open (it drifts at most one lane per row), drops 1–3 work items in other lanes drawn from a lane bag so neither side
+      // gets favoured, and usually a pickup in a random open lane — not always the safe one.
+      if (s.p >= s.nextRowP) {
+        const lvl = Math.min(1, s.t / 90), warm = Math.min(1, s.t / 30), nl = s.nl, r = Math.random();
+        let np = s.path + (r < 0.4 ? -1 : r < 0.8 ? 1 : 0); if (np === s.path && s.dwell >= 1) np += Math.random() < 0.5 ? -1 : 1; if (np < 0 || np > nl - 1) np = 2 * s.path - np; s.dwell = np === s.path ? s.dwell + 1 : 0; s.path = np; // keeps moving, so the open side keeps changing
+        // Warm-up (first 30s): one piece of work per row at most, some rows are pure holiday, no campers, wider spacing. Then it builds.
+        const nBad = s.t < 12 && Math.random() < 0.4 ? 0 : Math.min(nl - 1, 1 + (Math.random() < (0.15 + 0.55 * lvl) * warm ? 1 : 0) + (nl > 3 && Math.random() < 0.35 * lvl * warm ? 1 : 0)), bad = [];
+        for (let i = 0; bad.length < nBad && i < 4; i++) { const j = s.laneBag.findIndex(l => l !== s.path && !bad.includes(l)); if (j < 0) { s.laneBag = ngShuffle([...Array(nl).keys()]); continue; } bad.push(s.laneBag.splice(j, 1)[0]); }
+        // Scatter: work drifts off the lane centres (never more than 0.12 lane into the open path) so parking between columns isn't safe.
+        const bx = bad.map(l => { let o = (Math.random() * 2 - 1) * 0.42; const tw = Math.sign(s.path - l); if (Math.abs(s.path - l) === 1 && o * tw > 0.12) o = 0.12 * tw; return Math.max(0, Math.min(nl - 1, l + o)); });
+        // Campers: if the duck is parked off-centre and well clear of the path, aim one at it.
+        const cx = s.x; if (warm >= 1 && Math.abs(cx - s.path) >= 0.85 && Math.abs(cx - Math.round(cx)) > 0.2 && !bx.some(x => Math.abs(x - cx) < 0.5) && Math.random() < 0.6) bx.push(cx);
+        bx.forEach(x => s.objs.push({ id: s.id++, lane: x, d: D0 + Math.random() * 0.35, bad: true, k: gmDraw(s, 'badBag', GM_BAD) }));
+        const open = ngShuffle([...Array(nl).keys()].filter(l => !bad.includes(l))), pow = s.t >= s.nextPow;
+        const nGood = pow ? 1 : warm < 1 ? 1 : (Math.random() < 0.9 - 0.2 * lvl ? 1 : 0) + (nl > 3 && Math.random() < 0.3 ? 1 : 0);
+        open.slice(0, nGood).forEach((l, i) => s.objs.push(pow && i === 0 ? { id: s.id++, lane: Math.max(0, Math.min(nl - 1, l + (Math.random() - 0.5) * 0.4)), d: D0, pow: true, k: 'Lolly', born: s.t } : { id: s.id++, lane: Math.max(0, Math.min(nl - 1, l + (Math.random() - 0.5) * 0.5)), d: D0 + Math.random() * 0.25, k: f >= GM_RADIO ? 'Note' : Math.random() < 1 / 26 ? 'Flamingo' : gmDraw(s, 'goodBag', GM_GOOD), born: s.t }));
+        // Warm-up trail: a second pickup right behind the first, so the quiet start still pays.
+        if (!pow && warm < 1 && open.length && Math.random() < 0.55) { const o0 = s.objs[s.objs.length - 1]; if (o0 && !o0.bad) s.objs.push({ id: s.id++, lane: o0.lane, d: o0.d + 0.75, k: gmDraw(s, 'goodBag', GM_GOOD), born: s.t }); }
+        if (pow) s.nextPow = s.t + 14 + Math.random() * 8;
+        s.nextRowP = s.p + 1.25 + (0.55 - 0.15 * lvl) * vb + 2.2 * (1 - warm);
+      }
+    } else if (!s.archOut) { s.archOut = true; s.objs.push({ id: s.id++, lane: Math.floor(Math.random() * s.nl), d: GM_ARCH_D, arch: true }); }
+    const lwN = g.lw, ppuN = g.ppu, duckWN = g.duckW, duckHalf = g.duckH / 2, reach = (duckHalf + GM_CHIP_H / 2) / ppuN;
+    for (const o of s.objs) {
+      if (o.done) continue;
+      if (o.arch) { if (o.d <= s.p) { o.done = true; if (Math.abs(o.lane - s.x) < 0.4) { s.arch = GM_ARCH; s.pts += GM_ARCH; pop('+' + ptsFmt(GM_ARCH), true); say('THROUGH THE ARCH · +' + ptsFmt(GM_ARCH)); } else say('MISSED THE ARCH. THE STADIUM SAW.'); } continue; }
+      if (o.born !== undefined && o.k === 'Lolly' && s.t - o.born > GM_MELT) { o.done = o.gone = true; continue; }
+      if (o.bad && o.d < s.p - reach) { o.done = o.passed = true; s.dodged[o.k] = (s.dodged[o.k] || 0) + 1; continue; }
+      // Work only hits if the pixels overlap (tight box, so threading a gap works); pickups are generous.
+      const dx = Math.abs(o.lane - s.x) * lwN, dy = Math.abs(o.d - s.p) * ppuN, iH = GM_ART[o.k] ? gmArtSize(o.k)[1] * g.sc / 2 : GM_CHIP_H / 2;
+      if (o.bad ? dx > duckWN * 0.34 + gmHalfW(o.k) * (GM_ART[o.k] ? g.sc : 1) || dy > duckHalf * 0.78 + iH * 0.8 : Math.abs(o.lane - s.x) > GM_SIDE || dy > duckHalf + iH * 0.84) continue;
+      o.done = true;
+      if (o.bad) {
+        if (s.t < s.boostUntil) { o.passed = true; s.dodged[o.k] = (s.dodged[o.k] || 0) + 1; s.pts += GM_SMASH * lv; pop('SMASH +' + ptsFmt(GM_SMASH * lv)); gmSnd('smash'); continue; }
+        s.hits++; s.hearts--; gmSnd(s.hearts <= 0 ? 'grounded' : 'hit'); s.slowUntil = s.t + GM_SLOW; const lose = Math.min(Math.floor(s.pts), GM_HIT * lv); s.pts -= lose; s.lost = (s.lost || 0) + lose; pop('−' + ptsFmt(lose) + (s.combo >= GM_COMBO ? ' · COMBO LOST' : ''), true, true); s.combo = 0;
+        if (s.hearts <= 0) { s.fin = true; setRes({ grounded: true, f, t: s.t, bonus: 0, pts: s.pts, arch: 0, hits: s.hits, emails: s.dodged.Email || 0, calls: s.dodged.Boss || 0, lost: s.lost || 0, score: Math.floor(s.pts) }); setPhase('over'); return false; }
+        say(o.k === 'Thundercloud' ? gmLesson38() : 'WOBBLE · ' + s.hearts + (s.hearts === 1 ? ' HEART LEFT' : ' HEARTS LEFT'));
+      } else if (o.pow) {
+        s.boostUntil = s.t + GM_BOOST; gmSnd('power'); say('GRANADILLA LOLLY · SUGAR RUSH. THE WORK CAN’T TOUCH YOU.');
+      } else { const x = gmX(s.combo), add = (GM_VAL[o.k] || 100) * x * lv; s.pts += add; s.combo++; gmSnd(o.k === 'Flamingo' ? 'flamingo' : 'grab', s.combo); pop('+' + ptsFmt(add), o.k === 'Flamingo'); if (gmX(s.combo) > x) say((gmSnd('combo', gmX(s.combo)), 'COMBO ×') + gmX(s.combo) + (gmX(s.combo) === GM_XMAX ? ' · MAXED. DON’T YOU DARE WOBBLE.' : '')); }
+    }
+    s.objs = s.objs.filter(o => o.d > s.p - 1.2 && !o.gone); s.pops = s.pops.filter(q => s.t - q.t < 0.9);
+    GM_MARKS.forEach(([m, txt]) => { if (f >= m && !s.marks[m]) { s.marks[m] = 1; say(txt); } });
+    if (s.tier < GM_TIERS.length && vb >= GM_TIERS[s.tier][0]) { gmSnd('level'); say(GM_TIERS[s.tier++][1]); }
+    if (s.p >= GM_D) {
+      const tf = s.t - (s.p - GM_D) / v; s.fin = true; s.p = GM_D;
+      const clean = s.hits ? 0 : GM_CLEAN, heartsB = s.hearts * GM_HEART_B, bonus = clean + heartsB;
+      setRes({ t: tf, bonus, clean, heartsB, hearts: s.hearts, pts: s.pts, arch: s.arch, hits: s.hits, emails: s.dodged.Email || 0, calls: s.dodged.Boss || 0, lost: s.lost || 0, score: Math.floor(s.pts + bonus) }); gmSnd('land'); setPhase('land');
+      return false;
+    }
+    tick(x => x + 1);
+  });
+
+  if (phase === 'over' && res && res.grounded) return (
+    <div className="gm-center">
+      <span className="lbl blue">{'Grounded · ' + Math.floor(res.f * 100) + '% of the way'}</span>
+      <div className="hl" style={{ fontSize: 'clamp(56px, 8vw, 120px)' }}>Grounded <Sel>{res.f < 0.2 ? 'in Joburg.' : res.f < 0.5 ? 'over the Free State.' : res.f < 0.6 ? 'in Harrismith.' : res.f < GM_RADIO ? 'at Van Reenen’s.' : 'in sight of the sea.'}</Sel></div>
+      <p className="lead" style={{ margin: 0, textAlign: 'center' }}>{'Three wobbles and the duck sat down. The work caught up. ' + ptsFmt(res.score) + ' points.'}</p>
+      <p className="lead" style={{ margin: 0, textAlign: 'center' }}>{'Dodged: ' + res.emails + (res.emails === 1 ? ' email, ' : ' emails, ') + res.calls + (res.calls === 1 ? ' call' : ' calls') + ' from the boss. Not enough, apparently.'}</p>
+      <ScoreBanner id="game-09" pts={res.score} line={'No landing, no bonus.' + (res.lost ? ' The work took ' + ptsFmt(res.lost) + ' back.' : '') + ' Arcade rules: no cap, so go again.'} />
+      <button type="button" className="btn primary" onClick={start}>[ Migrate again ]</button>
+    </div>
+  );
+  if (phase === 'over' && res) return (
+    <div className="gm-center">
+      <span className="lbl blue">{'Landed · ' + ngSec(res.t)}</span>
+      <div className="hl" style={{ fontSize: 'clamp(56px, 8vw, 120px)' }}>You made <Sel>it.</Sel></div>
+      <p className="lead" style={{ margin: 0, textAlign: 'center' }}>{'Ducks always do. ' + ptsFmt(res.score) + ' points.'}</p>
+      <p className="lead" style={{ margin: 0, textAlign: 'center' }}>{'Dodged: ' + res.emails + (res.emails === 1 ? ' email, ' : ' emails, ') + res.calls + (res.calls === 1 ? ' call' : ' calls') + ' from the boss. The ocean doesn’t have reception anyway.'}</p>
+      <ScoreBanner id="game-09" pts={res.score} line={ptsFmt(res.pts - res.arch) + ' flight' + (res.arch ? ' + ' + ptsFmt(res.arch) + ' arch' : '') + ' + ' + ptsFmt(res.heartsB) + ' for ' + res.hearts + (res.hearts === 1 ? ' heart' : ' hearts') + (res.clean ? ' + ' + ptsFmt(res.clean) + ' no-wobble bonus.' : '. ' + res.hits + (res.hits === 1 ? ' wobble' : ' wobbles') + ', so no clean bonus.') + ' No cap.'} />
+      <button type="button" className="btn primary" onClick={start}>[ Migrate again ]</button>
+    </div>
+  );
+  const s = S.current, el = box.current, landing = phase === 'land';
+  const W = el ? el.clientWidth : 640, H = el ? el.clientHeight : 540;
+  const nl = s ? s.nl : gmLanes(W), g = gmGeo(W, H, nl), laneW = g.laneW, ll = g.ll, lw = g.lw, duckY = g.duckY, ppu = g.ppu;
+  const p = s ? s.p : 0, lane = s ? s.x : Math.floor(nl / 2), f = Math.min(1, p / GM_D), t = s ? s.t : 0;
+  const yOf = d => duckY - (d - p) * ppu, xOf = l => ll + lw * (l + 0.5);
+  const slowed = s && t < s.slowUntil && !landing, boost = s && t < s.boostUntil && !landing;
+  const duckW = g.duckW, duckH = g.duckH;
+  const yD = yOf(GM_D), outside = W - (ll + laneW) > 160;
+  const sky = 'color-mix(in oklab, #5d636c ' + Math.round((1 - f) * 100) + '%, #3f8fef)';
+  const powered = !landing && boost;
+  const mode = landing ? 'land' : slowed ? 'wobble' : 'fly';
+  const item = o => {
+    const x = xOf(o.lane), y = yOf(o.d);
+    if (o.arch) return <span key={o.id} className="gm-arch" style={{ left: x, top: y + duckH / 2, width: lw * 0.96, height: lw * 0.62 }}><span>Moses Mabhida</span></span>;
+    const melt = o.k === 'Lolly' ? Math.min(1, (t - o.born) / GM_MELT) : 0;
+    const tf = 'translate(-50%,-50%)' + (melt ? ' scale(' + (1 - 0.3 * melt).toFixed(3) + ')' : '');
+    const [aw, ah] = gmArtSize(o.k).map(v => v * g.sc);
+    if (o.pow) return <React.Fragment key={o.id}><span className="gm-halo" style={{ left: x, top: y, width: ah * 1.9, height: ah * 1.9, opacity: 1 - 0.5 * melt }}><span></span></span><img className="gm-art glow" src={GM_ART[o.k]} alt={GM_LABEL[o.k] + ', power-up'} draggable="false" style={{ left: x, top: y, width: aw, height: ah, transform: tf, opacity: 1 - 0.35 * melt }} /></React.Fragment>;
+    if (GM_ART[o.k]) return <img key={o.id} className="gm-art" src={GM_ART[o.k]} alt={GM_LABEL[o.k]} draggable="false" style={{ left: x, top: y, width: aw, height: ah, transform: tf, opacity: o.done ? 0.3 : 1 - 0.35 * melt }} />;
+    return <span key={o.id} className={'ng-chip gm-big ' + (o.bad ? 'bad' : o.pow ? 'gm-pow' : 'good')} style={{ left: x, top: y, transform: tf, opacity: o.done ? 0.3 : 1 - 0.5 * melt }}>{GM_LABEL[o.k]}{o.k === 'Meeting' && <span className="gm-dot"></span>}{o.k === 'Bell' && <span className="gm-badge">99+</span>}</span>;
+  };
+  return (
+    <div className="gm-wrap" style={{ flex: 1 }}>
+      <div className="ng-hud lbl"><span className="gm-hearts" aria-label={(s ? s.hearts : GM_HEARTS) + ' of ' + GM_HEARTS + ' hearts'}>{[...Array(GM_HEARTS).keys()].map(i => <span key={i} className={i < (s ? s.hearts : GM_HEARTS) ? 'on' : ''}>♥</span>)}</span><span className="blue">{'Distance ' + Math.floor(f * 100) + '%'}</span><span>{'Speed ' + (gmV(t) / GM_V0).toFixed(1) + '×'}</span><span>{'Time ' + ngSec(t)}</span><span className="gm-score">{gmScore(s ? s.pts : 0)}</span><span className={'gm-x' + (s && gmX(s.combo) > 1 ? ' on' : '')}>{'×' + (s ? gmX(s.combo) : 1)}</span><span className="blue">{'Level ' + (s ? gmLvl(gmV(t)) : 1)}</span><span className="muted">{'Hi ' + gmScore(Math.max(s ? s.hi : 0, s && s.pts > s.hi ? s.pts : 0))}</span>{boost && <span className="blue">Sugar rush</span>}</div>
+      <div ref={box} className="ng-area n3" style={{ background: sky }} onPointerDown={grab} onPointerMove={slide} onPointerUp={drop} onPointerCancel={drop}>
+        {GM_PUFFS.map(([px, pw], i) => { const span = H + 120, y = ((i * span / GM_PUFFS.length + p * ppu * 0.55) % span) - 60; return <span key={i} className="gm-puff" style={{ left: px * W - pw / 2, top: y, width: pw }}></span>; })}
+        {!landing && <><span className="gm-edge" style={{ left: 0, width: ll }}></span><span className="gm-edge r" style={{ left: ll + laneW, width: Math.max(0, W - ll - laneW) }}></span></>}
+        {(yD > -20 || landing) && <div className={'n3-beach' + (landing ? ' land' : '')} style={{ height: landing ? H : Math.max(0, yD) }}><span className="lbl" style={{ color: '#fff' }}>The ocean</span><div className="row" style={{ gap: 8, justifyContent: 'center' }}>{['Umbrella', 'Umbrella', 'Umbrella'].map((u, i) => <span key={i} className="ng-tag">{u}</span>)}</div></div>}
+        {yD > -20 && !landing && <div className="n3-finish" style={{ top: yD }}><span>Landing zone · the beach</span></div>}
+        {!landing && GM_MARKS.map(([m, txt]) => { const y = yOf(GM_D * m); return y > -40 && y < H + 40 ? <span key={m} className="n3-sign" style={{ top: y, left: outside ? ll + laneW + 14 : ll + laneW - 8, transform: outside ? 'translateY(-50%)' : 'translate(-100%,-50%)' }}>{txt}</span> : null; })}
+        {s && !landing && s.objs.map(o => (o.done && !o.bad && !o.arch) || o.passed ? null : item(o))}
+        <div className={'gm-duck ' + mode + (powered ? ' boost' : '')} style={{ left: xOf(lane), top: duckY, width: powered ? duckW * 1.45 : duckW }}>
+          <img src={powered ? LSD_RES('assets/duck-powerup.png') : LSD_RES('assets/duck-suitcase.png')} alt={landing ? 'Duck with a suitcase, landing on the beach' : powered ? 'Duck in sunglasses, powered up' : slowed ? 'Duck with a suitcase, wobbling' : 'Duck with a suitcase, flying south'} draggable="false" />
+        </div>
+        {s && !landing && s.pops.map(q => { const a = (t - q.t) / 0.9; return <span key={q.id} className={'gm-pop' + (q.big ? ' big' : '') + (q.bad ? ' bad' : '')} style={{ left: xOf(q.x), top: duckY - duckH * 0.7 - a * 70, opacity: 1 - a * a }}>{q.txt}</span>; })}
+        {s && !landing && s.toast && t - s.toastT < 2.6 && <span key={s.toastT} className="ng-toast">{s.toast}</span>}
+        {phase === 'ready' && <div className="ng-pause"><span className="lbl blue">Joburg → the beach · three minutes and change, if you last</span><div className="hl" style={{ fontSize: 'clamp(36px, 4vw, 56px)' }}>Fly <Sel>south.</Sel></div><p className="lead" style={{ margin: 0, textAlign: 'center' }}>It starts quiet, like the N3 at 4am. Then the work finds you. It does not stop getting faster.</p><ul className="ng-rules"><li><span className="lbl blue">Steer</span><span>Drag the duck left and right. Anywhere on the sky works. Keyboard: arrow keys or A/D.</span></li><li><span className="lbl blue">Dodge</span><span>The work followed you: emails, the boss, meetings. Hit it and you lose a heart and points.</span></li><li><span className="lbl blue">Grab</span><span>Mangoes, litchis, slops. Anything that smells like holiday. Flamingos are rare and worth five.</span></li><li><span className="lbl blue">Combo</span><span>Every five in a row ups your combo, up to ×8. Everything pays more the faster you go.</span></li><li><span className="lbl blue">Power-up</span><span>The glowing granadilla lolly. Four seconds where the work can’t touch you. Get there before it melts.</span></li><li><span className="lbl blue">Hearts</span><span>Ducks don’t crash. They wobble. Three wobbles and you’re grounded. No cap on the score.</span></li></ul><button type="button" className="btn primary" onClick={start}>[ Migrate ]</button><ChallengeBtn id="game-09" /></div>}
+        {playing && paused && <NgPaused onResume={() => setPaused(false)} />}
+      </div>
+      <div className="row" style={{ justifyContent: 'center' }}><button type="button" className="btn line sm" onClick={() => setSound(x => !x)}>{sound ? 'Sound on' : 'Sound off'}</button></div>
+    </div>
+  );
+}
+
+// ── GAME: SNAP, EKSE ─────────────────────────────────────────────────────────
+// 8 random dictionary words + their short meanings. Words that could be confused share a group: max one per board.
+const SNAP_SHORT = { '01': 'Hi, and agreed', '02': 'I say', '03': 'Properly good', '04': 'Watch out', '05': 'Board shorts', '06': 'Longboarding', '07': 'Absolutely, for sure', '08': 'Planning an adventure', '09': 'To tell', '10': 'Durban’s own music', '11': 'A party', '12': 'Fancy, posh', '13': 'Curry in bread', '14': 'All good, sorted', '15': 'Thank you', '16': 'Leaving without telling', '17': 'The East Coast', '18': 'To eat', '19': 'Someone being stupid', '20': 'All gear, no idea', '21': 'Traffic light', '22': 'To like', '23': 'Do what you must', '24': 'A kid', '25': 'Brother, mate', '26': 'Someone from Gauteng', '27': 'Home', '28': 'To leave', '29': 'Awesome', '30': 'It’s lekker', '31': 'My brother', '32': 'Amapiano, shortened', '33': 'Beautiful', '34': 'Looks good', '35': 'Hello there', '36': 'How are you', '37': 'Guys, everyone', '38': 'That lady, not related', '39': 'That guy, not related', '40': 'To look at', '41': 'A smack', '42': 'Go away', '43': 'Not looking good for you', '44': 'A potato', '45': 'Loaded, rich', '46': 'Faking being rich', '47': 'To dance', '48': 'The girls', '49': 'A swim', '50': 'To chill' };
+const SNAP_GROUP = { '10': 'music', '12': 'rich', '14': 'hi', '16': 'leave', '25': 'bro', '28': 'leave', '29': 'good', '30': 'good', '31': 'bro', '32': 'music', '33': 'looks', '34': 'looks', '35': 'hi', '38': 'elder', '39': 'elder', '45': 'rich', '46': 'rich', '01': 'hi', '03': 'good' };
+function snapDeal() {
+  const pick = [], used = new Set();
+  for (const l of ngShuffle(window.LSD2.lessons.filter(x => SNAP_SHORT[x.n]))) { const g = SNAP_GROUP[l.n] || l.n; if (used.has(g)) continue; used.add(g); pick.push(l); if (pick.length === 8) break; }
+  return ngShuffle(pick.flatMap(l => [{ key: l.n + 'w', n: l.n, kind: 'w', text: l.w }, { key: l.n + 'm', n: l.n, kind: 'm', text: SNAP_SHORT[l.n] }]));
+}
+const snapScore = (t, wrong) => { const bonus = Math.round(t <= 45 ? 600 : Math.max(0, 600 * (150 - t) / 105)); return { bonus, score: Math.min(1000, Math.max(400, 400 + bonus - 10 * wrong)) }; };
+
+function SnapGame() {
+  const [go, setGo] = React.useState(false);
+  const [cards, setCards] = React.useState(snapDeal);
+  const [open, setOpen] = React.useState([]);
+  const [matched, setMatched] = React.useState([]);
+  const [wrong, setWrong] = React.useState(0);
+  const [lock, setLock] = React.useState(false);
+  const [eish, setEish] = React.useState(false);
+  const [paused, setPaused] = React.useState(false);
+  const [res, setRes] = React.useState(null);
+  const [, tick] = React.useState(0);
+  const clk = React.useRef({ acc: 0, at: 0, on: false, started: false });
+  const elapsed = () => { const c = clk.current; return c.acc + (c.on ? (performance.now() - c.at) / 1000 : 0); };
+  const running = clk.current.started && !res;
+  React.useEffect(() => { if (!running || paused) return; const t = setInterval(() => tick(x => x + 1), 100); return () => clearInterval(t); }, [running, paused]);
+  useBlurPause(running && !paused, () => { const c = clk.current; if (!c.on) return; c.acc = elapsed(); c.on = false; setPaused(true); });
+  const resume = () => { const c = clk.current; c.at = performance.now(); c.on = true; setPaused(false); };
+  const deal = () => { clk.current = { acc: 0, at: 0, on: false, started: false }; setCards(snapDeal()); setOpen([]); setMatched([]); setWrong(0); setLock(false); setEish(false); setPaused(false); setRes(null); };
+  const flip = i => {
+    if (res || lock || paused || open.includes(i) || matched.includes(cards[i].n)) return;
+    const c = clk.current; if (!c.started) { c.started = true; c.on = true; c.at = performance.now(); }
+    const o = [...open, i]; setOpen(o);
+    if (o.length < 2) return;
+    const [a, b] = o.map(k => cards[k]);
+    if (a.n === b.n && a.kind !== b.kind) {
+      const m = [...matched, a.n]; setMatched(m); setOpen([]);
+      if (m.length === 8) { const t = elapsed(); c.acc = t; c.on = false; setRes({ t, wrong, ...snapScore(t, wrong) }); }
+    } else { setWrong(w => w + 1); setLock(true); setEish(true); setTimeout(() => { setOpen([]); setLock(false); setEish(false); }, 800); }
+  };
+  if (res) return (
+    <div className="gm-center">
+      <span className="lbl blue">{'Board cleared · ' + ngSec(res.t)}</span>
+      <div className="hl" style={{ fontSize: 'clamp(56px, 8vw, 120px)' }}>All <Sel>matched.</Sel></div>
+      <p className="lead" style={{ margin: 0, textAlign: 'center' }}>{'All matched in ' + ngSec(res.t) + '. ' + res.wrong + ' wrong flip' + (res.wrong === 1 ? '' : 's') + '. The final exam just got easier, ekse. ' + ptsFmt(res.score) + ' marks.'}</p>
+      <ScoreBanner id="game-11" pts={res.score} line={'400 for pairs + ' + res.bonus + ' time bonus − ' + res.wrong * 10 + ' for wrong pairs' + (400 + res.bonus - 10 * res.wrong < 400 ? ', floor 400.' : '.')} />
+      <button type="button" className="btn primary" onClick={deal}>[ Deal again ]</button>
+    </div>
+  );
+  if (!go) return <GameGate id="game-11" kicker="Snap, ekse · timed" title={<>Snap, <Sel>ekse.</Sel></>} line="Sixteen cards. Eight words, eight meanings. Match them all, fast." cta="[ Flip, bru ]" onStart={() => setGo(true)} />;
+  return (
+    <div className="gm-center">
+      <div className="ng-hud lbl" style={{ width: 'min(760px, 100%)' }}><span className="blue">{'Pairs ' + matched.length + ' / 8'}</span><span>{clk.current.started ? 'Time ' + ngSec(elapsed()) : 'Clock starts on your first flip'}</span><span className="muted">{'Wrong ' + wrong}</span></div>
+      <div className="snap-wrap">
+        <div className="snap">
+          {cards.map((c, i) => {
+            const up = open.includes(i) || matched.includes(c.n), ok = matched.includes(c.n), no = eish && open.includes(i);
+            return <button key={c.key} type="button" className={'sn-c ' + (up ? c.kind : 'down') + (ok ? ' ok' : '') + (no ? ' no' : '')} onClick={() => flip(i)} aria-label={up ? c.text : 'Face-down card'}>{up ? c.text : <span className="lbl">Snap</span>}</button>;
+          })}
+        </div>
+        {paused && <NgPaused onResume={resume} />}
+      </div>
+      <div className="lead" style={{ minHeight: 30, margin: 0, textAlign: 'center' }}>{eish ? <b>Eish.</b> : 'Flip two. Word + meaning = a pair. Fast and accurate pays.'}</div>
+    </div>
+  );
+}
+
+Object.assign(window, { MigrationGame, SnapGame });
