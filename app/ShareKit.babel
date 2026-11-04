@@ -35,6 +35,8 @@ async function ltsdCopy(text) {
 }
 // Desktop = no native share sheet. Phones keep navigator.share.
 const ltsdDesk = () => !navigator.share;
+// Phones/tablets (touch-first). Computers with a share sheet (Safari on Mac, Chrome on Windows) are NOT phones: Save the card just downloads there.
+const ltsdPhone = () => !!navigator.share && !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
 function ltsdToast(msg) {
   let el = document.getElementById('ltsd-toast');
   if (!el) { el = document.createElement('div'); el.id = 'ltsd-toast'; el.className = 'ltsd-toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
@@ -167,13 +169,13 @@ function ltsdFileName(id) {
 }
 async function ltsdCardBlob(id, r) { const cv = await ltsdResultCard(id, r); return new Promise(res => cv.toBlob(res, 'image/png')); }
 function ltsdDownload(b, name) { const u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
-// Phones: the card goes to the native share sheet as a file.
+// Phones: the card goes to the native share sheet as a file. Computers: it downloads, nothing else.
 async function ltsdShareCard(id, r) {
   const b = await ltsdCardBlob(id, r), name = ltsdFileName(id);
   const f = new File([b], name, { type: 'image/png' }), text = ltsdShareText(id, r);
   ltsdTrack(id, 'card');
-  if (navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], text }); } catch (e) {} return; }
-  ltsdDownload(b, name); ltsdToast('Card saved. Post it somewhere inland.');
+  if (ltsdPhone() && navigator.canShare && navigator.canShare({ files: [f] })) { try { await navigator.share({ files: [f], text }); } catch (e) {} return; }
+  ltsdDownload(b, name); ltsdToast('Card downloaded: ' + name + '. Post it somewhere inland.');
 }
 // Desktop: one click downloads the card AND copies the caption. If the clipboard refuses, returns the text for a manual field.
 async function ltsdShareDesk(id, r, card) {
