@@ -1,0 +1,1 @@
+Lesson voice clips. Name them lesson-NN.mp3 (lesson-00.mp3 = Durban, lesson-01.mp3 … lesson-32.mp3). The "Hear the word" button on each lesson plays the matching file. Or set an `audio` URL on a lesson in lessons.js.
