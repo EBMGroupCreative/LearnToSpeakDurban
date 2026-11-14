@@ -1,0 +1,113 @@
+function DictionaryScreen() {
+  const L = [...window.LSD2.lessons, ...(window.LSD2.bonus || [])];
+  const [q, setQ] = React.useState('');
+  const [letter, setLetter] = React.useState('');
+  // 52 entries: the 50 words, plus Durban (the subject, under D) and Gateway (the campus, under G). Neither is examinable or counted anywhere else.
+  const all = [...L, ...[window.DURBAN_ENTRY, window.GATEWAY_ENTRY].filter(Boolean)];
+  const letters = [...new Set(all.map(l => l.w[0].toUpperCase()))].sort();
+  const list = all.filter(l => (!letter || l.w[0].toUpperCase() === letter) && (l.w + ' ' + l.d + ' ' + (l.e || '') + ' ' + (l.keys || '')).toLowerCase().includes(q.trim().toLowerCase()));
+  const sorted = [...list].sort((a, b) => a.w.localeCompare(b.w));
+  const groups = []; sorted.forEach(l => { const c = l.w[0].toUpperCase(); const g = groups[groups.length - 1]; if (g && g[0] === c) g[1].push(l); else groups.push([c, [l]]); });
+  return (
+    <div>
+      <PageHead index="01" kicker={all.length + ' entries · ' + L.length + ' words, one city, one campus · Trust us, we counted'} title="The Dictionary">
+        <p className="lead" style={{ margin: 0 }}>Every word in the course, what it means, and how to use it on someone from Joburg. Alphabetical, unlike Joburg traffic.</p>
+      </PageHead>
+      <div className="dict-bar">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: '1 1 320px', maxWidth: 420 }}><input className="field" style={{ background: '#fff', boxShadow: 'var(--shadow-sm)' }} placeholder="Search" aria-label="Search the dictionary" value={q} onChange={e => setQ(e.target.value)} /><span className="lbl muted" style={{ whiteSpace: 'normal' }}>{L.length + ' words. Plus the city and the campus. ' + all.length + ', technically. We counted.'}</span></div>
+        <span className="lbl muted" style={{ alignSelf: 'flex-start', marginTop: 17 }}>{pad2(list.length) + (list.length === 1 ? ' entry showing' : ' entries showing')}</span>
+      </div>
+      <div className="dx">
+        <div className="dx-page">
+          <div className="dx-run lbl"><span>{list.length ? sorted[0].w + ' — ' + sorted[sorted.length - 1].w : 'Nothing — nothing'}</span><span className="muted">The Durban Dictionary · 1st ed.</span><span className="blue">{letter ? 'Section ' + letter : 'A–Z'}</span></div>
+          {list.length ? <div className="dx-cols">
+            {groups.map(([c, items]) => <React.Fragment key={c}>
+              <div className="hl dx-letter">{c}<i></i></div>
+              {items.map(l => l.special ? (
+                <div key={l.n} className="dx-e dx-campus">
+                  <a className="dx-w" href={l.href}><b>{l.w}</b></a><SayBtn w={l.w} /><span className="dx-n">{l.tag}</span> <span className="dx-pos">({l.p})</span> — {l.d}
+                  {l.e && <span className="dx-eg"><em>E.G.</em>“{l.e}”</span>}
+                  {l.campus ? <GatewayLinks compact /> : <a className="lbl blue dx-ref" style={{ opacity: 1 }} href={l.href}>See Lesson 00 →</a>}
+                </div>
+              ) : (
+                <a key={l.n} href={'#lessons/' + l.n} className="dx-e">
+                  <b className="dx-w">{l.w}</b><SayBtn w={l.w} /><span className="dx-n">{l.n}</span> <span className="dx-pos">({l.p})</span> — {l.d}
+                  {l.e && <span className="dx-eg"><em>E.G.</em>“{l.e}”</span>}
+                  <span className="lbl blue dx-ref">{(l.n[0] === 'B' ? 'See bonus word ' : 'See Lesson ') + l.n + ' →'}</span>
+                </a>
+              ))}
+            </React.Fragment>)}
+          </div> : <div className="ls-hidden">No entry for that. Yet. Submit it and Gateway will investigate.</div>}
+          <div className="dx-foot lbl muted"><span>Learn to Speak Durban. A public service by Gateway.</span><span>Page 1 of 1. The intern ran out of paper.</span></div>
+        </div>
+        <nav className="dx-thumb" aria-label="Letters">
+          <button type="button" className={'dx-tab' + (!letter ? ' on' : '')} onClick={() => setLetter('')}>All</button>
+          {letters.map(c => <button key={c} type="button" className={'dx-tab' + (letter === c ? ' on' : '')} onClick={() => setLetter(letter === c ? '' : c)}>{c}</button>)}
+        </nav>
+      </div>
+    </div>
+  );
+}
+
+function FlashScreen() {
+  const L = window.LSD2.lessons;
+  const [order, setOrder] = React.useState(() => L.map((_, i) => i));
+  const [pos, setPos] = React.useState(0);
+  const [flip, setFlip] = React.useState(false);
+  const [known, setKnown] = useStored('lsd2-known', []);
+  const [onlyNew, setOnlyNew] = React.useState(false);
+  const deck = onlyNew ? order.filter(i => !known.includes(L[i].n)) : order;
+  const l = deck.length ? L[deck[Math.min(pos, deck.length - 1)]] : null;
+  const move = d => { setFlip(false); setPos(p => deck.length ? (Math.min(p, deck.length - 1) + d + deck.length) % deck.length : 0); };
+  const mark = got => { if (!l) return; setKnown(k => got ? (k.includes(l.n) ? k : [...k, l.n]) : k.filter(x => x !== l.n)); if (!(onlyNew && got)) move(1); else setFlip(false); };
+  const shuffle = () => { const o = [...order]; for (let i = o.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [o[i], o[j]] = [o[j], o[i]]; } setOrder(o); setPos(0); setFlip(false); };
+  React.useEffect(() => {
+    const f = e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || (e.target.closest && e.target.closest('.say'))) return; if (e.key === ' ') { e.preventDefault(); setFlip(x => !x); } if (e.key === 'ArrowRight') move(1); if (e.key === 'ArrowLeft') move(-1); };
+    addEventListener('keydown', f); return () => removeEventListener('keydown', f);
+  });
+  return (
+    <div>
+      <PageHead title="Flashcards" />
+      <div className="fc-wrap">
+        <div className="fc-side">
+          <div>
+            <div className="between lbl"><span>Known</span><span className="blue">{pad2(known.length) + ' / ' + L.length}</span></div>
+            <div className="bar"><i style={{ width: (known.length / L.length * 100) + '%' }}></i></div>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" className="chip" onClick={shuffle}>Shuffle</button>
+            <button type="button" className={'chip' + (onlyNew ? ' on' : '')} onClick={() => { setOnlyNew(!onlyNew); setPos(0); setFlip(false); }}>Only ones I don’t know</button>
+            {known.length > 0 && <button type="button" className="chip" onClick={() => setKnown([])}>Reset</button>}
+          </div>
+          <p className="muted" style={{ margin: 0, fontSize: 15, lineHeight: 1.45 }}>Space flips. Arrows move. Only file it as known if you actually know it. The cards can tell.</p>
+        </div>
+        {l ? <div className="fc-main">
+          <div className={'fc' + (flip ? ' flip' : '')} onClick={() => setFlip(!flip)} role="button" tabIndex="0" aria-label="Flip card">
+            <div className="card fc-face fc-front">
+              <div className="between lbl"><span>{'Lesson ' + l.n}</span><span className="muted">{pad2(Math.min(pos, deck.length - 1) + 1)} / {pad2(deck.length)}</span></div>
+              <Fit as="div" min={24} className="hl fc-word" style={{ fontSize: l.w.length > 8 ? 'clamp(48px, 5.6vw, 96px)' : 'clamp(60px, 8vw, 136px)' }}><Sel>{l.w}</Sel></Fit>
+              <div className="fc-front-ft"><SayBtn w={l.w} className="lg" /><span className="lbl muted">Tap to flip</span></div>
+            </div>
+            <div className="card fc-face fc-back">
+              <div className="between lbl"><span className="blue">Look Up · LTSD-{l.n}</span><span className="muted">{known.includes(l.n) ? 'Known' : 'Not filed yet'}</span></div>
+              <div>
+                <div className="hl" style={{ fontSize: 36, marginBottom: 12 }}>{l.w}</div>
+                <div className="ls-def" style={{ fontSize: 22 }}><i className="pos">({l.p})</i> — {l.d}</div>
+                <div className="lbl blue" style={{ margin: '22px 0 8px' }}>E.g.</div>
+                <div className="hl" style={{ fontSize: 'clamp(24px, 2.4vw, 36px)', letterSpacing: '-.035em', lineHeight: 1.04 }}>{l.e ? '“' + l.e + '”' : <span className="muted">Line in development. The writers are at the beach.</span>}</div>
+              </div>
+              <div></div>
+            </div>
+          </div>
+          <div className="fc-ctl">
+            <button type="button" className="btn line sm" onClick={() => move(-1)}>← Previous</button>
+            <div className="row" style={{ justifyContent: 'center' }}><button type="button" className="btn line" onClick={() => mark(false)}>Not yet</button><button type="button" className="btn primary" onClick={() => mark(true)}>Got it</button></div>
+            <button type="button" className="btn line sm" style={{ justifySelf: 'end' }} onClick={() => move(1)}>Next →</button>
+          </div>
+        </div> : <div className="fc-main"><div className="card" style={{ padding: 48 }}><div className="hl" style={{ fontSize: 64 }}>{'All ' + L.length + ' filed. '}<Sel>Tops.</Sel></div><p className="lead">You’re dangerously close to fluent. Go prove it.</p><a className="btn primary" href="#exam">[ Sit the final exam ]</a></div></div>}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { DictionaryScreen, FlashScreen });

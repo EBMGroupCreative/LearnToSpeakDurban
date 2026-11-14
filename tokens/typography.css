@@ -1,0 +1,15 @@
+:root{
+--font-grotesk:'Switzer','Helvetica Neue',Arial,sans-serif;
+--font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+--font-pixel:var(--font-grotesk);
+--fs-display:clamp(64px,9vw,136px);/* @kind font */--fs-h1:72px;--fs-h2:44px;--fs-h3:28px;--fs-h4:20px;
+--fs-body:17px;--fs-small:14px;--fs-label:12px;--fs-micro:10px;
+--lh-tight:0.95;/* @kind font */
+--lh-head:1.05;/* @kind font */
+--lh-body:1.45;/* @kind font */
+
+--tracking-display:-0.04em;--tracking-head:-0.025em;--tracking-caps:0.08em;--tracking-label:0.06em;
+--wdth-display:100;/* @kind font */
+--wdth-body:100;/* @kind font */
+
+}

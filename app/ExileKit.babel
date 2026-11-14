@@ -1,0 +1,189 @@
+// The exile designs: profile covers, meeting backgrounds, phone and desktop wallpapers (type only, drawn to canvas),
+// plus Dezemba.ics and the office printables (#study/office). They live inside the Goodies cards (CourseScreens.jsx), not a section of their own. Loads after DownloadsHub.jsx (uses DL, dlMono, dlFonts, dlSave).
+function exCanvas(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.fillStyle = DL.paper; x.fillRect(0, 0, w, h); x.textBaseline = 'alphabetic'; return [c, x]; }
+function exFont(x, sz, wt = 800) { x.font = `${wt} ${sz}px ${DL_G}`; x.letterSpacing = '0px'; x.fontKerning = 'normal'; }
+function exSelBox(x, X, T, W, H, sz) {
+  x.fillStyle = DL.hl; x.fillRect(X, T, W, H);
+  const hw = Math.max(3, sz * 0.026), k = sz * 0.075; x.fillStyle = DL.blue;
+  x.fillRect(X - hw / 2, T, hw, H); x.fillRect(X + W - hw / 2, T, hw, H);
+  x.beginPath(); x.arc(X, T - k * 0.6, k, 0, 7); x.fill(); x.beginPath(); x.arc(X + W, T + H + k * 0.6, k, 0, 7); x.fill();
+}
+// lines: strings, or arrays of [text, selected]
+function exRich(x, lines, X, Y, sz, align = 'left', lh = 1.02) {
+  exFont(x, sz);
+  lines.forEach((ln, i) => {
+    const segs = typeof ln === 'string' ? [[ln, 0]] : ln, by = Y + i * sz * lh;
+    const tw = segs.reduce((s, [t]) => s + x.measureText(t).width, 0);
+    let cx = align === 'right' ? X - tw : align === 'center' ? X - tw / 2 : X;
+    segs.forEach(([t, sel]) => { const w = x.measureText(t).width; if (sel) { const lead = x.measureText(t.match(/^\s*/)[0]).width, m = x.measureText(t.trim()), pad = sz * 0.06; exSelBox(x, cx + lead - m.actualBoundingBoxLeft - pad, by - sz * 0.84, m.actualBoundingBoxLeft + m.actualBoundingBoxRight + pad * 2, sz * 1.06, sz); } cx += w; });
+    cx = align === 'right' ? X - tw : align === 'center' ? X - tw / 2 : X;
+    x.fillStyle = DL.ink; segs.forEach(([t]) => { x.fillText(t, cx, by); cx += x.measureText(t).width; });
+  });
+  x.letterSpacing = '0px';
+}
+function exSign(x, logo, R, B, s, short) {
+  const lh = s * 6.2, lw = logo ? logo.width / logo.height * lh : 0;
+  if (logo) x.drawImage(logo, R - lw, B - lh, lw, lh);
+  const tx = R - lw - (logo ? s * 1.6 : 0);
+  if (!short) dlMono(x, 'Learn to Speak Durban.', tx, B - s * 3.1, s, DL.ink, 'right');
+  dlMono(x, short ? 'Learn to Speak Durban.' : 'A public service by Gateway.', tx, B - s * 1.75, s, DL.ink, 'right');
+  x.font = `500 ${s}px ${DL_M}`; x.fillStyle = DL.blue; x.textAlign = 'right'; x.fillText('learntospeakdurban.com', tx, B - s * 0.15); x.textAlign = 'left';
+}
+function exWall(x, w, h, sz, col) {
+  exFont(x, sz); x.fillStyle = col; const ws = window.LSD2.lessons.map(l => l.w), gap = sz * 0.4;
+  let cx = -sz * 0.08, cy = sz * 0.82, i = 0;
+  while (cy < h + sz) { const t = ws[i % ws.length], tw = x.measureText(t).width; if (cx > 0 && cx + tw > w) { cx = -sz * 0.08; cy += sz * 1.04; } x.fillText(t, cx, cy); cx += tw + gap; i++; }
+  x.letterSpacing = '0px';
+}
+function exCard(x, X, Y, W, H, r) { x.save(); x.shadowColor = 'rgba(0,0,0,.14)'; x.shadowBlur = r * 1.6; x.shadowOffsetY = r * 0.5; x.fillStyle = '#fff'; x.beginPath(); x.roundRect(X, Y, W, H, r); x.fill(); x.restore(); }
+
+const EX_GROUPS = [['covers', 'Profile covers', 'X 1500 × 500 · Facebook 820 × 312'], ['meet', 'Meeting backgrounds', 'Teams / Zoom · 1920 × 1080 · centre left clear for you'], ['lock', 'Lock screens', '1170 × 2532 · clock stays clear'], ['home', 'Home screens', '1170 × 2532 · one word, above the dock'], ['desk', 'Desktop', '2560 × 1440 and 1920 × 1080']];
+const exCover = (fl, w, h, k) => (x, lg) => {
+  if (fl) { exRich(x, [[['Fluent-ish.', 1]]], w * 0.05, h * 0.58, Math.round(h * 0.44)); exSign(x, lg, w - w * 0.035, h - h * 0.08, Math.round(16 * k)); return; }
+  exWall(x, w, h, Math.round(h * 0.17), '#d7d7d3');
+  const cw = w * 0.38, ch = h * 0.5, cx = w - w * 0.035 - cw, cy = h - h * 0.1 - ch, s = Math.round(14 * k);
+  exCard(x, cx, cy, cw, ch, 22 * k);
+  exRich(x, [[['Learn to speak ', 0], ['Durban.', 1]]], cx + cw * 0.07, cy + ch * 0.36, Math.round(Math.min(ch * 0.2, cw * 0.085)));
+  exSign(x, lg, cx + cw - cw * 0.06, cy + ch - ch * 0.12, s);
+};
+// Meeting backgrounds: the person sits in the middle, so the lines stay in the top-left third (≤ ~540 px of 1920).
+const exMeet = (lines, sub) => (x, lg) => {
+  dlLockup(x, 1856, 96, 'paper');
+  let sz = 64; exFont(x, sz); const segW = l => (typeof l === 'string' ? [[l]] : l).reduce((s, [tx]) => s + x.measureText(tx).width, 0) + sz * 0.12; while (sz > 44 && Math.max(...lines.map(segW)) > 540) { sz -= 2; exFont(x, sz); }
+  exRich(x, lines, 72, 200, sz, 'left', 1.08);
+  if (sub) dlMono(x, sub, 72, 200 + lines.length * sz * 1.08 + 4, 20, DL.ink);
+  if (lg) { const lh = 90, lw = lg.width / lg.height * lh; x.drawImage(lg, 1920 - 64 - lw, 1080 - 56 - lh, lw, lh); }
+};
+// Phone slogans: inside the central 80% (x 117 → 1053), below the clock (y > 634), above the bottom 10% (y < 2281).
+const exLock = (lines, sub) => (x, lg) => {
+  let sz = 112; exFont(x, sz); const segW = l => (typeof l === 'string' ? [[l]] : l).reduce((s, [tx]) => s + x.measureText(tx).width, 0) + sz * 0.2; while (sz > 64 && Math.max(...lines.map(segW)) > 1053 - 140) { sz -= 4; exFont(x, sz); }
+  exRich(x, lines, 140, 1080, sz);
+  if (sub) dlMono(x, sub, 140, 1080 + lines.length * sz * 1.02 + 20, 30, DL.ink);
+  exSign(x, lg, 1053, 2281 - 40, 26, true);
+};
+const exHome = w => x => exRich(x, [[[w, 1]]], 585, 2281 - 180, 72, 'center'); // above the dock, clear of the bottom 10%
+const exDesk = (clean, w, h) => (x) => {
+  const k = w / 2560;
+  if (!clean) { exWall(x, w, h, Math.round(150 * k), 'rgba(17,17,17,.07)'); dlMono(x, 'Learn to Speak Durban · all 50', w - 90 * k, h - 70 * k, Math.round(26 * k), DL.muted, 'right'); return; }
+  exRich(x, [[['Park', 1], [' (v.) — to chill.', 0]]], w - 120 * k, h - 200 * k, Math.round(96 * k), 'right');
+  x.font = `500 ${Math.round(48 * k)}px ${DL_G}`; x.fillStyle = DL.ink; x.textAlign = 'right'; x.fillText('You’re getting there.', w - 120 * k, h - 110 * k); x.textAlign = 'left';
+};
+// Slogans: the same six lines as phone lock screens (1170 × 2532) and desktops (2560 × 1440).
+const EX_SLOGANS = [
+  ['braai', 'Just the braai', ['There is no time.', 'There’s just', [['the ', 0], ['braai.', 1]]]],
+  ['28', 'Days to Dezemba', [[['28', 1], [' days to', 0]], 'Dezemba. The', 'syllabus is', 'waiting.']],
+  ['check', 'Check the time', ['Check the time.', 'Now check the', 'sea temperature.', [['We’ll ', 0], ['wait.', 1]]]],
+  ['robots', 'Ocean-view robots', ['Our robots have', 'ocean views.', 'Yours have', [['more ', 0], ['robots.', 1]]]],
+  ['shap', 'Shap shap', [[['Shap ', 0], ['shap.', 1]], 'Everything’s', 'sorted.']],
+  ['vy', 'Ready to vy', ['Packed.', 'Ready to', [['vy.', 1]]]],
+  ['aweh', 'Aweh is a whole sentence', [[['Aweh.', 1]], 'It’s a whole', 'sentence.']],
+  ['ocean', 'The ocean is open', ['The ocean is', 'open 24/7.', 'Your inbox', [['is ', 0], ['not.', 1]]]],
+  ['n3', 'Six hours of N3', ['Six hours of N3.', 'Zero hours of', [['admin.', 1]]]],
+  ['bunny', 'Hands only', ['A bunny is eaten', 'with your hands.', [['No ', 0], ['forks.', 1]]]],
+  ['lekker', 'Out of office, into the sea', ['Out of office.', 'Into the', [['sea.', 1]]]],
+  ['jol', 'Back after the jol', ['Back after', 'the jol.', [['Eventually.', 1]]]],
+  ['tan', 'Fluent in tan lines', ['Fluent in', 'tan lines.', [['Lekker.', 1]]]],
+  ['humid', 'It’s not the heat', ['It’s not the heat.', 'It’s the', [['humidity.', 1]]]],
+  ['now-now', 'Just now', ['I’ll reply', [['just now.', 1]], 'Durban time.']],
+];
+// Desktop slogans: bottom-left so desktop icons (top-left on Windows, top-right on Mac) stay clear. Lockup bottom-right.
+const exSloganDesk = (lines, w, h, ground = 'paper') => (x, lg) => {
+  const k = w / 2560, sz = Math.round(118 * k), G = { paper: DL_PAPER, orange: DL.blue, ink: DL.ink }[ground] || DL_PAPER;
+  x.fillStyle = G; x.fillRect(0, 0, w, h);
+  exRichOn(x, lines, 150 * k, h - 150 * k - (lines.length - 1) * sz * 1.02, sz, ground);
+  dlLockup(x, w - 120 * k, h - 150 * k, ground, Math.round(34 * k * 1.25));
+};
+// exRich on any ground: text colour + highlight handles follow the ground (ink on paper, white on orange / ink).
+function exRichOn(x, lines, X, Y, sz, ground) {
+  if (ground === 'paper') return exRich(x, lines, X, Y, sz);
+  const txt = '#fff', handle = ground === 'orange' ? '#fff' : DL.blue;
+  exFont(x, sz);
+  lines.forEach((ln, i) => {
+    const segs = typeof ln === 'string' ? [[ln, 0]] : ln, by = Y + i * sz * 1.02; let cx = X;
+    segs.forEach(([tx, sel]) => { if (sel) { const lead = x.measureText(tx.match(/^\s*/)[0]).width; cx += lead; cx += dlSel(x, tx.trim(), cx + Math.max(6, sz * 0.13), by, sz, handle); exFont(x, sz); } else { x.fillStyle = txt; x.fillText(tx, cx, by); cx += x.measureText(tx).width; } });
+  });
+  x.letterSpacing = '0px';
+}
+// Desktop-only art. Big type, bottom-left; lockup bottom-right; the middle and the icon edges stay quiet.
+const exDeskArt = (kind, w, h) => (x, lg) => {
+  const k = w / 2560, P = DL_PAPER, O = DL.blue, K = DL.ink;
+  const fill = c => { x.fillStyle = c; x.fillRect(0, 0, w, h); };
+  if (kind === 'wave') { fill(O); for (let i = 0; i < 9; i++) dlWave(x, -40 * k, h * 0.42 + i * 54 * k, w + 80 * k, i % 2 ? DL.hl : 'rgba(255,255,255,.9)'); exRichOn(x, [[['The coast.', 1]]], 150 * k, h - 170 * k, Math.round(140 * k), 'orange'); dlLockup(x, w - 120 * k, h - 150 * k, 'orange', Math.round(42 * k)); return; }
+  if (kind === 'list') { fill(P); const L = window.LSD2.lessons, cols = 5, rows = Math.ceil(L.length / cols), cw = (w - 300 * k) / cols, rh = (h - 360 * k) / rows, fs = Math.round(Math.min(rh * 0.62, 64 * k)); x.fontKerning = 'normal'; L.forEach((l, i) => { const cx = 150 * k + (i % cols) * cw, cy = 150 * k + (Math.floor(i / cols) + 1) * rh; let f = fs; x.font = `800 ${f}px ${DL_G}`; while (x.measureText(l.w).width > cw - 70 * k && f > 20) { f -= 2; x.font = `800 ${f}px ${DL_G}`; } x.fillStyle = K; x.fillText(l.w, cx + 46 * k, cy); dlMono(x, l.n, cx, cy, Math.round(18 * k), O); }); dlLockup(x, w - 120 * k, h - 80 * k, 'paper', Math.round(36 * k)); return; }
+  if (kind === 'big') { fill(K); exRichOn(x, [[['Aweh.', 1]]], 150 * k, h - 220 * k, Math.round(420 * k), 'ink'); dlMono(x, 'Lesson 01 · a greeting; also happy agreement', 150 * k, h - 120 * k, Math.round(26 * k), DL.hl); dlLockup(x, w - 120 * k, 160 * k, 'ink', Math.round(42 * k)); return; }
+  if (kind === 'sun') { fill(DL.hl); x.fillStyle = O; x.beginPath(); x.arc(w * 0.78, h * 0.56, h * 0.28, Math.PI, 0); x.fill(); x.fillRect(0, h * 0.56, w, h * 0.44); for (let i = 0; i < 5; i++) dlWave(x, -40 * k, h * 0.62 + i * 60 * k, w + 80 * k, 'rgba(255,255,255,.75)'); exRichOn(x, ['Sun’s out.'], 150 * k, 300 * k, Math.round(120 * k), 'paper'); dlLockup(x, w - 120 * k, h - 120 * k, 'orange', Math.round(38 * k)); return; }
+  if (kind === 'count') { fill(O); const now = lsdNow(), y = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear(), n = Math.max(0, Math.ceil((new Date(y, 11, 1) - now) / 864e5)); x.font = `800 ${Math.round(520 * k)}px ${DL_G}`; x.fillStyle = '#fff'; x.fontKerning = 'normal'; x.fillText(String(n), 140 * k, h - 400 * k); exRichOn(x, ['days to', [['Dezemba.', 1]]], 150 * k, h - 260 * k, Math.round(96 * k), 'orange'); dlLockup(x, w - 120 * k, 160 * k, 'orange', Math.round(42 * k)); return; }
+};
+// Home screens: one word, above the dock. Every one of the 50.
+const exHomeWord = w => w.toLowerCase().replace(/[.]$/, '') + (/[!?]$/.test(w) ? '' : '.');
+const exHomeItem = w => ({ g: 'home', id: 'home-' + ltsdSlug(w), name: exHomeWord(w), w: 1440, h: 3120, dw: 1170, dh: 2535, draw: exHome(exHomeWord(w)) });
+// Profile covers, "your favourite word": one big selected word + the lockup. X 1500 × 500, Facebook 820 × 312.
+const exFav = (word, w, h, k) => (x, lg) => { let sz = Math.round(h * 0.44); exFont(x, sz); while (x.measureText(word).width > w * 0.6 && sz > 20) { sz -= 2; exFont(x, sz); } x.letterSpacing = '0px'; exRich(x, [[[word, 1]]], w * 0.05, h * 0.5 + sz * 0.34, sz); exSign(x, lg, w - w * 0.035, h - h * 0.08, Math.round(16 * k)); };
+const exFavItem = (word, net) => net === 'x' ? { g: 'covers', id: 'x-word-' + ltsdSlug(word), name: word + ' · X', w: 1500, h: 500, draw: exFav(word, 1500, 500, 1.6) } : { g: 'covers', id: 'fb-word-' + ltsdSlug(word), name: word + ' · Facebook', w: 820, h: 312, draw: exFav(word, 820, 312, 0.95) };
+const EXILE = [
+  { g: 'covers', id: 'x-wall', name: 'X · word wall', w: 1500, h: 500, draw: exCover(0, 1500, 500, 1.6) },
+  { g: 'covers', id: 'x-fluent', name: 'X · Fluent-ish', w: 1500, h: 500, draw: exCover(1, 1500, 500, 1.6) },
+  { g: 'covers', id: 'fb-wall', name: 'Facebook · word wall', w: 820, h: 312, draw: exCover(0, 820, 312, 0.95) },
+  { g: 'covers', id: 'fb-fluent', name: 'Facebook · Fluent-ish', w: 820, h: 312, draw: exCover(1, 820, 312, 0.95) },
+  { g: 'meet', id: 'meet-aweh', name: 'Could have been an aweh', w: 1920, h: 1080, draw: exMeet(['This meeting', 'could have been', [['an ', 0], ['aweh.', 1]]]) },
+  { g: 'meet', id: 'meet-coast', name: 'Emotionally at the coast', w: 1920, h: 1080, draw: exMeet(['Physically here.', 'Emotionally at', [['the ', 0], ['coast.', 1]]], '— Lesson 17') },
+  { g: 'meet', id: 'meet-parked', name: 'Currently: parked', w: 1920, h: 1080, draw: exMeet([[['Currently: ', 0], ['parked.', 1]], 'Proceed', 'accordingly.']) },
+  { g: 'meet', id: 'meet-voice', name: 'My office voice', w: 1920, h: 1080, draw: exMeet(['This is my', [['office ', 0], ['voice.', 1]]], 'The real one is at the beach') },
+  { g: 'meet', id: 'meet-fluency', name: 'Fluency: pending', w: 1920, h: 1080, draw: exMeet([[['Fluency: ', 0], ['pending.', 1]]], 'Learn to Speak Durban · in progress') },
+  { g: 'meet', id: 'meet-rock', name: 'At the rock pools', w: 1920, h: 1080, draw: exMeet(['Mentally at', [['the ', 0], ['rock pools.', 1]]]) },
+  { g: 'meet', id: 'meet-reception', name: 'Reception at the beach', w: 1920, h: 1080, draw: exMeet(['Reception is', 'better at', [['the ', 0], ['beach.', 1]]]) },
+  { g: 'meet', id: 'meet-scheming', name: 'Currently scheming', w: 1920, h: 1080, draw: exMeet([[['Currently ', 0], ['scheming.', 1]], 'Please hold.'], '— Lesson 08') },
+  { g: 'meet', id: 'meet-dezemba', name: 'I was in Dezemba', w: 1920, h: 1080, draw: exMeet(['Sorry, I was', [['in ', 0], ['Dezemba.', 1]]]) },
+  { g: 'meet', id: 'meet-seaview', name: 'Other desk, sea view', w: 1920, h: 1080, draw: exMeet(['My other desk', 'has a', [['sea ', 0], ['view.', 1]]]) },
+  ...EX_SLOGANS.map(([id, name, lines]) => ({ g: 'lock', id: 'lock-' + id, name, w: 1440, h: 3120, dw: 1170, dh: 2535, draw: exLock(lines) })),
+  ...EX_SLOGANS.flatMap(([id, name, lines]) => [['paper', ''], ['orange', ' · orange'], ['ink', ' · black']].map(([gr, suf]) => ({ g: 'deskslogan', id: 'desk-' + id + (gr === 'paper' ? '' : '-' + gr), name: name + suf, w: 2560, h: 1440, draw: exSloganDesk(lines, 2560, 1440, gr) }))),
+  ...[['wave', 'The coast · waves'], ['list', 'All 50 words'], ['big', 'Aweh · big'], ['sun', 'Sun’s out'], ['count', 'Days to Dezemba']].flatMap(([kd, name]) => [[2560, 1440], [1920, 1080]].map(([w, h]) => ({ g: 'desk', id: 'desk-' + kd + '-' + w, name: name + ' · ' + w, w, h, draw: exDeskArt(kd, w, h) }))),
+  { g: 'desk', id: 'desk-wall-2560', name: 'Word wall · 2560', w: 2560, h: 1440, draw: exDesk(0, 2560, 1440) },
+  { g: 'desk', id: 'desk-clean-2560', name: 'Park · 2560', w: 2560, h: 1440, draw: exDesk(1, 2560, 1440) },
+  { g: 'desk', id: 'desk-wall-1920', name: 'Word wall · 1920', w: 1920, h: 1080, draw: exDesk(0, 1920, 1080) },
+  { g: 'desk', id: 'desk-clean-1920', name: 'Park · 1920', w: 1920, h: 1080, draw: exDesk(1, 1920, 1080) },
+];
+// k = fraction of full size (thumbnails draw small, downloads draw at 1).
+// dw/dh: the layout space a design is drawn in, when its export size differs (phone masters: 1170 × 2535 → 1440 × 3120).
+const exRender = (e, logo, k = 1) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(e.w * k)); c.height = Math.max(1, Math.round(e.h * k)); const x = c.getContext('2d'); x.fontKerning = 'normal'; const f = e.dw ? e.w / e.dw : 1, lw = e.dw || e.w, lh = e.dh || e.h; x.scale(k * f, k * f); x.fillStyle = DL.paper; x.fillRect(0, 0, lw, lh); x.textBaseline = 'alphabetic'; e.draw(x, logo); return c; };
+
+// Dezemba.ics: all day 15 Dec – 5 Jan (DTEND is exclusive), yearly. Reminder at 03:01 on day one (031).
+const EX_ICS = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gateway//Learn to Speak Durban//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT', 'UID:dezemba-vy@learntospeakdurban.com', 'DTSTAMP:20261102T000000Z', 'DTSTART;VALUE=DATE:20261215', 'DTEND;VALUE=DATE:20270106', 'RRULE:FREQ=YEARLY', 'SUMMARY:Vy.', 'DESCRIPTION:Dezemba. Lesson 28: Vy (v.) — to leave. learntospeakdurban.com', 'TRANSP:OPAQUE', 'BEGIN:VALARM', 'TRIGGER;RELATED=START:PT3H1M', 'ACTION:DISPLAY', 'DESCRIPTION:wake up, you’re in Durban', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR', ''].join('\r\n');
+
+// ---- Office printables (#study/office): three A4 pages, one per printed page ----
+// part: 'countdown' = the tear-off countdown only · 'door' = door sign + desk flag · none = all three.
+function OfficeSheets({ part }) {
+  const one = part === 'countdown', two = part === 'door';
+  const now = new Date(), y = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+  const days = Math.max(0, Math.ceil((new Date(y, 11, 1) - now) / 864e5));
+  // One page per week left, so it works whenever it's printed. Each page: the week's first number, seven tabs.
+  const weeks = Array.from({ length: Math.max(1, Math.ceil(days / 7)) }, (_, k) => Array.from({ length: 7 }, (_, i) => days - k * 7 - i).filter(n => n >= 0));
+  const foot = <div className="a4-foot"><span className="lbl">Learn to Speak Durban. A public service by Gateway.</span><span className="lbl blue">learntospeakdurban.com</span></div>;
+  return (
+    <div className="sheet-wrap">
+      <SheetBar title={one ? 'The tear-off countdown' : two ? 'Door sign & desk flag' : 'Office printables'} note={one ? 'one page per week left' : two ? '2 pages, one per sheet' : 'one page per sheet'} />
+      {!two && weeks.map((wk, k) => <div key={k} className="a4 of-page">
+        <div className="between lbl"><span className="blue">{'Office kitchen · tear one off daily · week ' + (k + 1) + ' of ' + weeks.length}</span><span className="muted">Lesson 28</span></div>
+        <div className="hl of-big">{wk[0]}</div>
+        <div className="hl of-h">{wk[0] === 1 ? 'Day' : 'Days'} until <Sel>Dezemba.</Sel></div>
+        {foot}
+        <div className="of-tabs" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>{wk.map((n, i) => <div key={i}><b className="hl">{n}</b><span className="lbl muted">{n ? 'Tear one off' : 'Vy.'}</span></div>)}</div>
+      </div>)}
+      {!one && <>
+      <div className="a4 of-page">
+        <div className="between lbl"><span className="blue">Door sign</span><span className="muted">Hang at eye level</span></div>
+        <div className="of-mid"><div className="hl of-h xl">Gone to <Sel>chow.</Sel></div><div className="hl of-h">Back shap shap.</div></div>
+        {foot}
+      </div>
+      <div className="a4 of-page of-flag">
+        <div className="of-half flip"><div className="hl of-h">This desk is in its <Sel>notice period.</Sel></div></div>
+        <div className="of-fold"><span className="lbl muted">Fold here</span></div>
+        <div className="of-half"><div className="hl of-h">This desk is in its <Sel>notice period.</Sel></div></div>
+        {foot}
+      </div>
+      </>}
+    </div>
+  );
+}
+
+Object.assign(window, { OfficeSheets, EXILE, EX_ICS, exRender, exHomeItem, exFavItem });

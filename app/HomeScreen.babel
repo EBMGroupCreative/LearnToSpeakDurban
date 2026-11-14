@@ -1,0 +1,178 @@
+function Hero({ go, preview }) {
+  const L = window.LSD2.lessons;
+  // The enrolled hero card deals a random lesson. Tap it or swipe it for another; no refresh needed. Never the same one twice running.
+  const [t, setT] = React.useState(() => L[Math.floor(Math.random() * L.length)]);
+  const [dealt, setDealt] = React.useState(0);
+  const deal = d => { setT(c => { let n = c; while (L.length > 1 && n === c) n = L[Math.floor(Math.random() * L.length)]; return n; }); setDealt(x => (d < 0 ? -1 : 1) * (Math.abs(x) + 1)); };
+  const sw = React.useRef(null);
+  const swDown = e => { if (e.target.closest('a,button')) return; sw.current = { x: e.clientX, y: e.clientY }; };
+  const swUp = e => { const s = sw.current; sw.current = null; if (!s) return; const dx = e.clientX - s.x, dy = e.clientY - s.y; if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) deal(dx); else if (Math.abs(dx) < 8 && Math.abs(dy) < 8) deal(1); };
+  const [copied, copy] = useCopy();
+  const [isIn] = useStored('lsd2-enrolled', false);
+  const enrolled = isIn && !preview;
+  // The signature: on first load the hero highlight draws on, then the handles pop. Once per visit.
+  const [draw] = React.useState(() => { if (window.__ltHeroDrawn) return false; window.__ltHeroDrawn = true; return true; });
+  const pick = a => { if (a === 'Copy' || a === 'Copied') copy('Learn to speak Durban.'); else if (a === 'Translate') go('ekselator'); else go('lessons/durban'); };
+  // Enrolled hero: words left (title → intro → fee → buttons → orientation → lockup), the lesson card alone on the right.
+  // The Copy / Translate / Look Up gag only appears on hover / tap of the highlighted word.
+  const [gag, setGag] = React.useState(false);
+  React.useEffect(() => { if (!gag) return; const f = e => { if (!e.target.closest('.hero-h .sel')) setGag(false); }; addEventListener('pointerdown', f); return () => removeEventListener('pointerdown', f); }, [gag]);
+  const title = <h1 className="hl hero-h"><span>Lear<span className="kn">n</span> to</span><span>sp<span className="kn">e</span><span className="kn">a</span>k</span><Sel className={(draw ? 'draw ' : '') + 'hero-sel' + (gag ? ' gag' : '')} tabIndex={0} onMouseEnter={() => setGag(true)} onMouseLeave={() => setGag(false)} onFocus={() => setGag(true)} onClick={() => setGag(true)}>Dur<span className="kn">b</span>an.<Pop items={[copied ? 'Copied' : 'Copy', 'Translate', 'Look Up']} active={1} onPick={pick} place="below" /></Sel></h1>;
+  const by = <a className="hero-by" href="https://gatewayworld.co.za/" target="_blank" rel="noopener" aria-label="A public service by Gateway"><span className="lbl">A public service by</span><img src={LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png')} alt="Gateway" /></a>;
+  const intro = <>
+    <p className="lead">Durban runs on its own language and one ocean. We can teach you the language. The ocean you’ll have to come fetch.</p>
+    <div className="lbl muted">Course fee: free. Fluency: guaranteed-ish.</div>
+  </>;
+  if (!enrolled) return (
+    <section className="hero">
+      <div className="hero-l">{title}{by}</div>
+      <div className="hero-r"><EnrolCard />
+        <div className="hero-after">{intro}<a className="lbl muted hero-or" href="#orientation">First time? → Orientation. 60 seconds. Then the beach.</a></div>
+      </div>
+    </section>
+  );
+  // Scroll cue: on desktop the hero fills the first screen so only the weather band's caption + card top edge (~64px) breaks the fold.
+  // Never squeezes: if the content is taller than the screen, it just runs on. Phones and tablets: natural height.
+  const heroRef = React.useRef(null);
+  React.useLayoutEffect(() => {
+    const fit = () => { const h = heroRef.current; if (!h) return; h.style.minHeight = ''; if (innerWidth <= 1100) return; const wx = document.querySelector('.hero-in ~ .today-sec .wx'); if (!wx) return;
+      const hb = h.getBoundingClientRect(), gap = wx.getBoundingClientRect().top - hb.bottom, want = innerHeight - 64 - gap - (hb.top + scrollY);
+      if (want > hb.height) h.style.minHeight = Math.round(Math.min(want, hb.height + 260)) + 'px'; }; // on very tall screens the weather shows more, rather than the hero floating in space
+    fit(); const t1 = setTimeout(fit, 400); addEventListener('resize', fit); if (document.fonts) document.fonts.ready.then(fit);
+    return () => { clearTimeout(t1); removeEventListener('resize', fit); };
+  }, []);
+  return (
+    <section ref={heroRef} className="hero hero-in">
+      <div className="hero-l">
+        {title}
+        {by}
+        <div className="hero-after hero-desc">{intro}</div>
+      </div>
+      <div className="hero-r">
+        <div className="lbl muted hero-cap">You’re enrolled · a random lesson · tap or swipe for another</div>
+        <div className="hero-deck" onPointerDown={swDown} onPointerUp={swUp} onPointerCancel={() => { sw.current = null; }} onKeyDown={e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') deal(e.key === 'ArrowLeft' ? -1 : 1); }} tabIndex={0} role="group" aria-label="Random lesson card. Arrow keys deal another.">
+          <LookUp key={t.n + ':' + dealt} l={t} size="lg" className={'lt-deal' + (dealt < 0 ? ' from-l' : '')} style={{ transform: 'rotate(' + (dealt % 2 ? -1.5 : 1.5) + 'deg)' }}>
+            <div className="row" style={{ marginTop: 20, gap: 18 }}><a className="hero-begin" href={'#lessons/' + t.n}>Begin this lesson →</a><button type="button" className="btn line sm" onClick={() => deal(1)}>Deal another</button></div>
+          </LookUp>
+        </div>
+        <div className="hero-go">
+          <div className="row"><a className="btn primary" href="#lessons/01">[ Begin Lesson 1 ]</a><a className="btn line" href="#exam">Skip to the exam (brave)</a></div>
+          <a className="lbl muted hero-or" href="#orientation">First time? → Orientation. 60 seconds. Then the beach.</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const toEnrol = () => { window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => { const el = document.querySelector('.enrol-card input'); if (el) el.focus({ preventScroll: true }); }, 450); };
+
+function WordWall({ locked }) {
+  const L = [...window.LSD2.lessons, ...(window.LSD2.bonus || [])];
+  const [h, setH] = React.useState(todayIndex());
+  return (
+    <section className="sec ww-sec">
+      <div className="sec-head">
+                <h2 className="hl h2">{locked ? <>{'In stock: ' + L.length + ' '}<Sel>words.</Sel></> : 'Select any word.'}</h2>
+        <p className="lead" style={{ margin: 0 }}>{locked ? 'All ' + L.length + ' are in stock. Hover them for free. Learning them costs one email address.' : 'Hover. Click. Become slightly more Durban. Side effects include saying “shot” to bank tellers.'}</p>
+      </div>
+      <div className="wall hl">
+        {L.map((l, i) => {
+          const inner = <Sel on={h === i} className={h === i ? 'draw xs' : ''}>{l.w}{h === i && <Pop items={locked ? [(l.n[0] === 'B' ? 'Bonus ' : 'Lesson ') + l.n, 'Enrol to unlock'] : ['Look Up · ' + l.n]} active={locked ? 1 : 0} />}</Sel>;
+          return <React.Fragment key={l.n}>
+            {locked
+              ? <span className={'ww' + (h === i ? ' on' : '')} onMouseEnter={() => setH(i)}>{inner}</span>
+              : <a href={'#lessons/' + l.n} className={h === i ? 'on' : ''} onMouseEnter={() => setH(i)} onFocus={() => setH(i)}>{inner}</a>}
+            {i < L.length - 1 ? ' ' : ''}
+          </React.Fragment>;
+        })}
+      </div>
+    </section>
+  );
+}
+
+const HOME_TILES = [
+  ['card', 'Student card', 'Proof of enrolment. One selfie and you’re official. Qualification pending. Citizenship pending slops.', 'Get carded'],
+  ['lessons/01', 'Lessons', 'All 50, one at a time. Mark them learnt. Nobody checks. Gateway checks.', 'Begin Lesson 1'],
+  ['dictionary', 'The Dictionary', 'All 50 words, filed by an intern who has since gone surfing.', 'Open the Dictionary'],
+  ['activities', 'Games', 'Twelve games. Eleven count for marks — the aunties count for honour. Joburg is currently winning. Fix that.', 'Play something'],
+  ['flashcards', 'Flashcards', 'Guess, flip, file it as known. Lying to a flashcard is a vaalie move.', 'Start flipping'],
+  ['ekselator', 'The Ekselator', 'Paste in anything inland. It comes back coastal. Your manager will smaak it, one time.', 'Make it coastal'],
+  ['study', 'Study pack', 'Download the course before take-off — or learn it landmark by landmark down the N3. Study at 10,000 metres or 120km/h (passenger seat only).', 'Pack the course'],
+  ['submit', 'Submit a word', 'Heard one at the taxi rank that we don’t know? Report it. The intern will investigate when the surf drops.', 'File a word'],
+  ['kit/quiz', 'How Durban are you?', 'Eight questions. One shareable result. Your bru will get 12%. We’ve run the numbers.', 'Take the quiz'],
+  ['kit', 'The Vy Kit', 'A postcard to gloat with, an auto-reply to hide behind, and a packing list one item long: baggies.', 'Duck out'],
+  ['exam', 'The final exam', 'All 50 words. One sitting. Pass, and the certificate prints itself. Fail, and you repeat Dezemba in Joburg.', 'Sit the exam'],
+  ['playlist', 'Road trip playlist', 'Gqom and yano for the N3. Six hours of it. By Harrismith you’ll stop asking “are we there yet.” Free, even for the unenrolled.', 'Open the playlist'],
+];
+const REDACT = { card: ['Qualification pending'], 'lessons/01': ['Gateway checks'], dictionary: ['who has since gone surfing'], activities: ['Joburg is currently winning'], flashcards: ['a vaalie move'], ekselator: ['one time'], study: ['passenger seat only'], submit: ['at the taxi rank'], 'kit/quiz': ['12%'], kit: ['baggies'], exam: ['start packing', 'repeat Dezemba in Joburg'] };
+const redact = (p, words = []) => { const w = words.filter(x => p.includes(x)); if (!w.length) return p; const re = new RegExp('(' + w.map(x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')'); return p.split(re).map((s, i) => w.includes(s) ? <span key={i} className="rd" title="Redacted. Dave.">{s}</span> : s); };
+const HOME_PLAYLIST_URL = 'https://open.spotify.com/playlist/4lbjRGukzSVUvbZq91tbI6';
+const HOME_APPLE_URL = 'https://music.apple.com/za/playlist/learn-to-speak-durban/pl.u-AkAmPlyUlVNPMX5';
+// Unenrolled visitors get Orientation (the loop) straight after the hero, then the word wall. Course contents is for the enrolled.
+const EXAM_TILE_LOCKED = 'All 50 words. One sitting. Unlocks 1 Dezemba — the moment you’re allowed to stop studying and start packing.';
+
+// Course card previews. Repeated content looks like itself everywhere: dictionary, flashcards, exam paper and playlist reuse the Goodies motifs.
+function HomePreview({ id }) {
+  const G = window.GdPreview;
+  if (id === 'dictionary' && G) return <G k="dict" />;
+  if (id === 'flashcards' && G) return <G k="flash" />;
+  if (id === 'playlist' && G) return <G k="playlist" />;
+  if (id === 'exam' && G) return <G k="exam" />;
+  if (id === 'card') return <div className="gd-pv"><div className="hm-sc"><span className="hm-sc-top">Student card</span><span className="hm-sc-ph"></span><b>Thandi M.</b><span className="hm-sc-t">Student</span><span className="hm-sc-no">LTSD-2026-04412</span></div></div>;
+  if (id === 'lessons/01') return <div className="gd-pv gd-ty"><span className="lbl blue">Lesson 01 · interj.</span><span className="hl hm-big"><Sel handles={false}>Aweh</Sel></span></div>;
+  if (id === 'activities') return <div className="gd-pv"><img className="hm-duck" src={LSD_RES('assets/duck-suitcase.png')} alt="" draggable="false" /></div>;
+  if (id === 'ekselator') return <div className="gd-pv hm-ek"><span className="gd-chip">friend</span><em>→</em><span className="gd-chip on">bru</span></div>;
+  if (id === 'study') return <div className="gd-pv"><div className="hm-phone"><b className="hm-ph-clock">9:41</b><span className="hm-ph-w"><Sel handles={false}>Shot.</Sel></span></div></div>;
+  if (id === 'submit') return <div className="gd-pv"><div className="hm-form"><span className="hm-tag">Form W-05</span><i>The word</i><s></s><i>Where you heard it</i><s></s><s className="h"></s></div></div>;
+  if (id === 'kit/quiz') return <div className="gd-pv gd-ty"><span className="lbl blue">Your result</span><span className="hl hm-quiz">87% <Sel handles={false}>Durban.</Sel></span></div>;
+  if (id === 'kit') return <div className="gd-pv"><div className="hm-post"><span className="hm-post-g">Greetings from <b>Durban.</b></span><span className="hm-post-s"></span><s></s><s></s><s className="h"></s></div></div>;
+  if (id === 'leaderboard') return <div className="gd-pv"><span className="hm-rank">#1</span></div>;
+  return <div className="gd-pv"></div>;
+}
+function HomeScreen({ go, preview }) {
+  const [enrolled] = useStored('lsd2-enrolled', false);
+  const locked = !enrolled || !!preview;
+  const nx = useNextLesson();
+  const examOpen = lsdNow() >= window.EXAM_UNLOCK;
+  return (
+    <div>
+      <Hero go={go} preview={preview} />
+      {locked ? <>
+      <section className="sec today-sec band home-or">
+        <div className="sec-head">
+                    <h2 className="hl h2"><Sel>Orientation.</Sel></h2>
+        </div>
+        <OrSteps enrolled={enrolled} />
+        <div className="row home-or-go">{enrolled ? <a className="btn primary" href={nx.href}>{nx.label}</a> : <button type="button" className="btn primary" onClick={toEnrol}>[ Enrol, bru ]</button>}<a className="btn line sm" href="#orientation">The full orientation</a></div>
+      </section>
+      <WordWall locked />
+      <section className="sec band"><TodayStrip /></section>
+      </> : <>
+      <section className="sec today-sec band"><TodayStrip /></section>
+      <WordWall locked={false} />
+      <section className="sec band">
+        <div className="sec-head">
+                    <h2 className="hl h2">{locked ? <>Everything else is <Sel>locked.</Sel></> : <>Everything is <Sel>open.</Sel></>}</h2>
+          <p className="lead" style={{ margin: 0 }}>{locked ? 'Twelve files. One form. Course fee: free. Contents partially redacted by Gateway’s legal team (one guy, Dave).' : 'You enrolled. No prerequisites, no homework, no invigilator. He’s at the beach.'}</p>
+        </div>
+        <div className="games gd-grid-c home-grid">
+          {HOME_TILES.map(([id, t, p, c], i) => { if (id === 'exam' && !examOpen) p = EXAM_TILE_LOCKED;
+            const lockedExam = !locked && id === 'exam' && !examOpen;
+            const meta = <div className="between lbl gd-meta hm-meta"><span className="blue">{pad2(i + 1)}</span>{locked && id !== 'playlist' ? <span className="pill lbl">Locked</span> : lockedExam ? <span className="muted">Opens 1 Dezemba</span> : null}</div>;
+            const body = <><div className="game-prev"><HomePreview id={id} /></div><div className="game-body">{meta}<Fit as="h3" className="hl" lines={2} min={20}>{t}</Fit><p>{locked && id !== 'playlist' ? redact(p, REDACT[id]) : p}</p>
+              <div className="game-cta">{id === 'playlist' ? <><a className="btn line sm" href={HOME_PLAYLIST_URL} target="_blank" rel="noopener">Spotify</a><a className="btn line sm" href={HOME_APPLE_URL} target="_blank" rel="noopener">Apple Music</a></>
+                : locked ? <span className="btn soft sm">Enrol to unlock</span>
+                : lockedExam ? <button type="button" className="btn line sm" disabled style={{ background: 'transparent', color: 'var(--ink)' }}>[ Locked · opens 1 Dezemba ]</button>
+                : <span className="btn line sm">{c}</span>}</div></div></>;
+            if (id === 'playlist' || lockedExam) return <div key={id} className="card game-tile gd-c">{body}</div>;
+            if (locked) return <button key={id} type="button" className="card game-tile gd-c locked" onClick={toEnrol}>{body}</button>;
+            return <a key={id} href={'#' + id} className="card game-tile gd-c">{body}</a>;
+          })}
+        </div>
+      </section>
+      </>}
+    </div>
+  );
+}
+
+Object.assign(window, { HomeScreen });

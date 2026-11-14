@@ -1,0 +1,277 @@
+// Shared primitives for microsite v2. No icons: type, highlight and handles only. One exception: the pronunciation speaker (SayBtn), by request.
+const pad2 = n => String(n).padStart(2, '0');
+
+// Optical spacing for the highlight: glyphs carry uneven side-bearings (a round G sits in, a y hangs out) and tight letter-spacing eats
+// the right edge. Measure the ink and pad each side so the gap from ink to handle is the same on both. Skipped if the word has wrapped.
+const SEL_CV = document.createElement('canvas').getContext('2d');
+function ltsdInk(c, t) { const m = c.measureText(t); return { l: -m.actualBoundingBoxLeft, r: m.actualBoundingBoxRight, w: m.width }; }
+function selTrim(el) {
+  let t = ''; el.childNodes.forEach(n => { if (n.nodeType === 3) t += n.nodeValue; else if (n.nodeType === 1 && !n.classList.contains('h') && !n.classList.contains('pop')) t += n.textContent; });
+  t = t.trim(); if (!t) return;
+  if (el._selP == null) { el.style.paddingLeft = el.style.paddingRight = ''; }
+  const cs = getComputedStyle(el), fs = parseFloat(cs.fontSize); if (!fs) return;
+  if (cs.textTransform === 'uppercase') t = t.toUpperCase();
+  const ls = cs.letterSpacing === 'normal' ? 0 : parseFloat(cs.letterSpacing) / fs * 100 || 0;
+  const key = t + '|' + cs.fontStyle + cs.fontWeight + cs.fontFamily + '|' + ls.toFixed(2) + '|' + el.className;
+  if (el._selKey === key) return;
+  if (el._selP == null || el._selCls !== el.className) { el.style.paddingLeft = el.style.paddingRight = ''; el._selP = parseFloat(getComputedStyle(el).paddingLeft) / fs; el._selCls = el.className; }
+  const c = SEL_CV; c.font = cs.fontStyle + ' ' + cs.fontWeight + ' 100px ' + cs.fontFamily;
+  const native = 'letterSpacing' in c; if (native) c.letterSpacing = ls + 'px';
+  let { l, r, w } = ltsdInk(c, t); if (native) c.letterSpacing = '0px'; else { w += ls * t.length; r += ls * (t.length - 1); }
+  const P = el._selP, lsb = l / 100, rsb = (w - r) / 100;
+  if (w / 100 * fs > el.clientWidth - P * fs * 2 + 4) { el._selKey = key; return; }
+  const gap = Math.max(P, P + (lsb + rsb) / 2);
+  el.style.paddingLeft = Math.max(0, gap - lsb).toFixed(4) + 'em'; el.style.paddingRight = Math.max(0, gap - rsb).toFixed(4) + 'em';
+  el._selKey = key;
+}
+function Sel({ children, on = true, handles = true, className = '', ...rest }) {
+  const ref = React.useRef(null);
+  React.useLayoutEffect(() => { const el = ref.current; if (!el) return; selTrim(el); if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { if (ref.current) { ref.current._selKey = null; selTrim(ref.current); } }); });
+  return <span ref={ref} className={'sel' + (on ? ' on' : '') + (className ? ' ' + className : '')} {...rest}>{children}{on && handles && <><i className="h l"></i><i className="h r"></i></>}</span>;
+}
+
+// Auto-fit: long words shrink to fit their box instead of clipping or breaking mid-word. Whole words only, never hyphenated.
+// Measures with handles and popovers hidden so the highlight furniture never counts as overflow.
+// lines = 1 or 2: the name rule (user-typed text in a fixed layout). One line first, shrinking to min; then (lines 2) wrap from the design size;
+// last resort keeps shrinking past min. Never clipped, never cut off. Use as a block (as="div").
+function Fit({ as = 'span', className = '', min = 10, lines = 0, children, ...rest }) {
+  const ref = React.useRef(null), base = (rest.style && rest.style.fontSize) || '';
+  const run = React.useCallback(() => {
+    const el = ref.current; if (!el) return;
+    el.classList.add('fit-m'); el.style.fontSize = base; el.style.whiteSpace = lines ? 'nowrap' : '';
+    const fs0 = parseFloat(getComputedStyle(el).fontSize) || 16; let fs = fs0, n = 0;
+    const set = v => { fs = v; el.style.fontSize = v.toFixed(1) + 'px'; };
+    const over = () => el.scrollWidth > el.clientWidth + 1;
+    const tall = () => { if (lines < 2 || el.style.whiteSpace !== 'normal') return false; const cs = getComputedStyle(el), lh = parseFloat(cs.lineHeight) || fs * 1.2; return el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) > lh * lines + 2; };
+    while (over() && fs > min && n++ < 40) set(Math.max(min, fs * 0.94));
+    if (over() && lines > 1) { el.style.whiteSpace = 'normal'; set(fs0); n = 0; while ((over() || tall()) && fs > min && n++ < 40) set(Math.max(min, fs * 0.94)); }
+    n = 0; while ((over() || tall()) && fs > 6 && n++ < 60) set(fs * 0.94);
+    el.classList.remove('fit-m');
+  }, [min, base, lines]);
+  React.useLayoutEffect(run);
+  React.useEffect(() => {
+    const el = ref.current; if (!el) return;
+    let w = 0, ro; if (window.ResizeObserver) { ro = new ResizeObserver(es => { const nw = Math.round(es[0].contentRect.width); if (nw !== w) { w = nw; run(); } }); ro.observe(el.parentElement || el); }
+    // Re-fit when any web font (or a new weight) lands: text measured in the fallback face is narrower and would overflow later.
+    const F = document.fonts, raf = requestAnimationFrame(run);
+    if (F && F.status !== 'loaded') F.ready.then(run);
+    if (F && F.addEventListener) F.addEventListener('loadingdone', run);
+    return () => { ro && ro.disconnect(); cancelAnimationFrame(raf); F && F.removeEventListener && F.removeEventListener('loadingdone', run); };
+  }, [run]);
+  return React.createElement(as, { ref, className: 'fit' + (className ? ' ' + className : ''), ...rest }, children);
+}
+// Meta labels ("Flying · daily best counts"): one line, never clipped. Shrinks first (to min), then drops trailing " · " segments,
+// then (last resort) shrinks the first segment further. Measured on canvas with the label's own font + tracking.
+function MetaFit({ text, className = '', min = 9.5 }) {
+  const ref = React.useRef(null), parts = String(text).split(' · ');
+  const [fit, setFit] = React.useState({ k: parts.length, fs: null });
+  const run = React.useCallback(() => {
+    const el = ref.current; if (!el) return;
+    const cs = getComputedStyle(el), base = parseFloat(getComputedStyle(el.parentElement || el).fontSize) || 12, avail = el.clientWidth;
+    if (!avail) return;
+    const ls = (parseFloat(cs.letterSpacing) || 0) / (parseFloat(cs.fontSize) || base), up = cs.textTransform === 'uppercase';
+    const c = MetaFit.c || (MetaFit.c = document.createElement('canvas').getContext('2d'));
+    const W = (s, fs) => { c.font = cs.fontWeight + ' ' + fs + 'px ' + cs.fontFamily; c.letterSpacing = (ls * fs) + 'px'; return c.measureText(up ? s.toUpperCase() : s).width; };
+    let out = null;
+    for (let k = parts.length; k >= 1 && !out; k--) { const s = parts.slice(0, k).join(' · '); for (let fs = base; fs >= min - 0.01; fs -= 0.5) if (W(s, fs) <= avail) { out = { k, fs: fs === base ? null : fs }; break; } }
+    if (!out) { let fs = min; while (fs > 6 && W(parts[0], fs) > avail) fs -= 0.5; out = { k: 1, fs }; }
+    setFit(f => f.k === out.k && f.fs === out.fs ? f : out);
+  }, [text, min]);
+  React.useLayoutEffect(run, [run]);
+  React.useEffect(() => {
+    const el = ref.current; if (!el) return;
+    let w = 0, ro; if (window.ResizeObserver) { ro = new ResizeObserver(() => { const nw = el.clientWidth; if (nw !== w) { w = nw; run(); } }); ro.observe(el.parentElement || el); }
+    const F = document.fonts; if (F && F.addEventListener) F.addEventListener('loadingdone', run);
+    return () => { ro && ro.disconnect(); F && F.removeEventListener && F.removeEventListener('loadingdone', run); };
+  }, [run]);
+  const k = Math.min(fit.k, parts.length);
+  return <span ref={ref} className={'mfit' + (className ? ' ' + className : '')} title={k < parts.length ? text : undefined} style={fit.fs ? { fontSize: fit.fs + 'px' } : undefined}>{parts.slice(0, k).join(' · ')}</span>;
+}
+// Inputs that hold a name: the type shrinks so the whole name stays visible (from max down to min px), never scrolls out of view.
+function useFitInput(ref, value, max = 20, min = 12) {
+  React.useLayoutEffect(() => {
+    const el = ref.current; if (!el) return;
+    const cs = getComputedStyle(el), avail = el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 4;
+    const c = useFitInput.c || (useFitInput.c = document.createElement('canvas').getContext('2d'));
+    c.font = cs.fontWeight + ' ' + max + 'px ' + cs.fontFamily; c.letterSpacing = '0px';
+    const w = c.measureText(value || '').width;
+    el.style.fontSize = (w > avail && avail > 0 ? Math.max(min, Math.floor(max * avail / w * 2) / 2) : max) + 'px';
+  });
+}
+// The name rule, for canvas. Design size first, shrink to fit one line (down to min); where lines is 2, a balanced two-line break
+// (at spaces, or after a hyphen) from the design size (or o.size2 where two lines need a smaller start); last resort shrinks further. Never truncates. font(sz) sets ctx.font + letterSpacing.
+function ltsdFitText(ctx, text, maxW, size, o = {}) {
+  const t = String(text == null ? '' : text).trim().replace(/\s+/g, ' '), min = o.min || Math.round(size * 0.5), lines = o.lines || 1, font = o.font || (s => { ctx.font = '800 ' + s + 'px sans-serif'; });
+  const step = Math.max(1, size / 50), W = s => (font(s), ctx.measureText(t).width);
+  const pcs = []; t.split(' ').forEach((w, wi) => w.replace(/-/g, '-\u0001').split('\u0001').forEach((p, pi) => p && pcs.push({ t: p, sep: wi && !pi ? ' ' : '' })));
+  const join = (a, b) => pcs.slice(a, b).map((p, i) => (i ? p.sep : '') + p.t).join('');
+  const two = s => { font(s); let best = null; for (let i = 1; i < pcs.length; i++) { const A = join(0, i), B = join(i), w = Math.max(ctx.measureText(A).width, ctx.measureText(B).width); if (!best || w < best.w) best = { w, l: [A, B] }; } return best && best.w <= maxW ? best.l : null; };
+  for (let s = size; s >= min; s -= step) if (W(s) <= maxW) return { size: s, lines: [t] };
+  if (lines > 1 && pcs.length > 1) for (let s = o.size2 || size; s >= min; s -= step) { const l = two(s); if (l) return { size: s, lines: l }; }
+  for (let s = min; s > 4; s -= Math.max(0.5, step / 2)) { if (W(s) <= maxW) return { size: s, lines: [t] }; if (lines > 1 && pcs.length > 1) { const l = two(s); if (l) return { size: s, lines: l }; } }
+  return { size: 4, lines: [t] };
+}
+// Every new round starts at the top of the game, not the bottom of the last result.
+function lsdStageTop() { const el = document.querySelector('.game-stage'); if (!el) return; window.scrollTo({ top: Math.max(0, el.getBoundingClientRect().top + scrollY - 84), behavior: ltReduced() ? 'auto' : 'smooth' }); }
+
+// Dark edit menu. With onPick the items are buttons; without, plain labels (safe inside links).
+function Pop({ items, active = 0, onPick, place = 'above' }) {
+  return (
+    <span className={'pop ' + place} onClick={onPick ? e => { e.preventDefault(); e.stopPropagation(); } : undefined}>
+      {items.map((a, i) => onPick
+        ? <button key={i} type="button" className={'pi' + (i === active ? ' on' : '')} onClick={e => { e.preventDefault(); e.stopPropagation(); onPick(a, i); }}>{a}</button>
+        : <span key={i} className={'pi' + (i === active ? ' on' : '')}>{a}</span>)}
+    </span>
+  );
+}
+
+function LookUp({ l, size = 'md', style, className = '', children }) {
+  return (
+    <div className={'card lookup ' + size + (className ? ' ' + className : '')} style={style}>
+      <div className="lbl lk-top"><span className="blue">Look Up · LTSD-{l.n}</span><span className="muted">{l.n + ' / ' + window.LSD2.lessons.length}</span></div>
+      <Fit as="div" className="hl lk-w" min={20}>{l.w}</Fit>
+      <div className="lk-pos">({l.p})</div>
+      <div className="lk-d">— {l.d}</div>
+      <div className="lbl lk-eg">E.g.</div>
+      <div className="lk-e">{l.e ? '“' + l.e + '”' : <span className="muted">Line in development. The writers are at the beach.</span>}</div>
+      {children}
+    </div>
+  );
+}
+
+function PageHead({ kicker, index, title, children }) {
+  const words = title.split(' ');
+  const last = words.pop();
+  return (
+    <div className="ph">
+            <h1 className="hl">{words.length ? words.join(' ') + ' ' : ''}<Sel>{last}</Sel></h1>
+      {children}
+    </div>
+  );
+}
+
+// Motion helpers. CSS does the animating; these only decide when. Reduced motion: values jump, nothing moves.
+const ltReduced = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+// Departure-board digits: a changed character remounts (new key) and slides in. Unchanged ones stay put.
+function Flip({ v }) { return <span className="fl">{String(v).split('').map((c, i) => <span key={i + ':' + c}>{c}</span>)}</span>; }
+// Header marks chip: counts up to the new total and pulses once when marks are earned.
+function MarksChip({ total }) {
+  const [d, setD] = React.useState(total), [n, setN] = React.useState(0), from = React.useRef(total);
+  React.useEffect(() => {
+    const a = from.current; from.current = total;
+    if (total <= a || ltReduced()) { setD(total); if (total > a) setN(x => x + 1); return; }
+    setN(x => x + 1); let raf; const t0 = performance.now(), D = 600;
+    const f = now => { const k = Math.min(1, (now - t0) / D); setD(Math.round(a + (total - a) * (1 - Math.pow(1 - k, 3)))); if (k < 1) raf = requestAnimationFrame(f); };
+    raf = requestAnimationFrame(f); return () => cancelAnimationFrame(raf);
+  }, [total]);
+  return <a key={n} href="#leaderboard" className={'hdr-marks' + (n ? ' lt-pulse' : '')} title="Your total game marks">Marks <b>{ptsFmt(d)}</b></a>;
+}
+
+// Campaign furniture, copied from CampaignAssets Orange: the wave (exact path, #lsdWave) and the lockup (wordmark with its kerning nudges + tagline + Gateway mark).
+const LTSD_WAVE_D = 'M458.52,261.53c-.01-.26,0-.51,0-.77-.93.12-1.86.18-2.8.18-7.23,0-14.02-3.55-19.12-9.99l-1.69-2.14c-5.37-6.8-12.56-10.55-20.24-10.55s-14.87,3.75-20.25,10.55l-1.69,2.14c-5.09,6.44-11.88,9.99-19.11,9.99s-14.02-3.55-19.12-10l-1.69-2.13c-5.37-6.8-12.56-10.55-20.24-10.55s-14.87,3.75-20.25,10.55l-1.69,2.14c-5.09,6.44-11.88,9.99-19.11,9.99s-14.02-3.55-19.11-9.99l-1.69-2.14c-5.37-6.8-12.56-10.55-20.24-10.55s-14.87,3.75-20.25,10.55l-1.68,2.13c-5.1,6.45-11.88,10-19.11,10s-14.02-3.55-19.11-10l-1.69-2.13c-5.37-6.8-12.56-10.54-20.24-10.54s-14.87,3.74-20.25,10.54l-1.68,2.14c-5.1,6.44-11.89,9.99-19.12,9.99s-14.02-3.55-19.11-9.99l-1.69-2.14c-5.37-6.8-12.56-10.55-20.24-10.55s-14.87,3.75-20.25,10.55l-1.68,2.14c-5.1,6.44-11.89,9.99-19.12,9.99-1.27,0-2.52-.11-3.76-.33-.24.44-.49.89-.74,1.33,1.48.29,2.98.45,4.5.45h0c7.69,0,14.88-3.75,20.25-10.55l1.69-2.14c5.09-6.44,11.88-9.99,19.11-9.99s14.02,3.55,19.11,9.99l1.69,2.14c5.37,6.8,12.56,10.55,20.24,10.55s14.87-3.75,20.25-10.55l1.68-2.14c5.1-6.44,11.89-9.99,19.12-9.99s14.01,3.55,19.11,10l1.68,2.13c5.38,6.8,12.57,10.54,20.25,10.54s14.87-3.74,20.24-10.54l1.69-2.13c5.09-6.45,11.88-10,19.11-10s14.02,3.55,19.11,9.99l1.69,2.14c5.37,6.8,12.56,10.55,20.24,10.55s14.87-3.75,20.25-10.55l1.68-2.14c5.1-6.44,11.89-9.99,19.12-9.99s14.02,3.55,19.11,10l1.69,2.13c5.38,6.8,12.57,10.55,20.25,10.55s14.87-3.75,20.24-10.55l1.69-2.14c5.1-6.44,11.89-9.99,19.12-9.99s14.02,3.55,19.11,9.99l1.69,2.14c5.38,6.8,12.57,10.55,20.25,10.55q1.43,0,2.84-.18C458.55,261.98,458.53,261.76,458.52,261.53Z';
+function LtsdWave({ className = '' }) { return <svg className={'lt-wave' + (className ? ' ' + className : '')} viewBox="40.5 238 418.3 24.6" aria-hidden="true"><path d={LTSD_WAVE_D}></path></svg>; }
+function LtsdLock({ light, center }) {
+  return (
+    <div className={'lt-lock' + (light ? ' lt' : '') + (center ? ' c' : '')}>
+      <span className="lt-lock-t"><span className="lt-lkm">Lear<span className="k">n</span> to sp<span className="k">e</span><span className="k">a</span>k <Sel>Dur<span className="k">b</span>an.</Sel></span><span className="lt-tg">A public service by Gateway</span></span>
+      <img src={LSD_RES(window.LSD_ASSETS + (light ? 'logos/gateway-logo-white.png' : 'logos/gateway-logo.png'))} alt="Gateway" />
+    </div>
+  );
+}
+// Card footer: wave just above the lockup. light = on orange / ink cards.
+// no = the card's footer mono line. Aunties cards are numbered from Nº 031 (Durban's dialling code), never 001.
+function LtsdSign({ light, no }) { return <div className={'lt-sign' + (light ? ' lt' : '')}>{no ? <div className="lt-wrow"><LtsdWave /><span className="lt-no">{no}</span></div> : <LtsdWave />}<LtsdLock light={light} /></div>; }
+const ltsdNo = i => 'Nº ' + String(31 + i).padStart(3, '0'); // i = 0-based position in the deck: prompts first, then answers
+// The 031 maker's mark. Identical wording everywhere, mono, footnote size, caption grey. Never orange, never a headline.
+const LTSD_SLUG = 'Born in the 031';
+
+// Progress keys are saved per student profile (key@email). Guests use the bare key.
+const LSD_SCOPED = ['lsd2-avatar', 'lsd2-learnt', 'lsd2-known', 'lsd2-packs', 'lsd2-name', 'lsd2-exam', 'lsd2-myforks', 'lsd2-points', 'lsd2-durdle', 'lsd2-level', 'lsd2-title', 'lsd2-cardno', 'lsd2-favword', 'lsd2-lostfound', 'lsd2-deckchair', 'lsd2-vouchers', 'lsd2-origin'];
+const lsdKey = key => { if (!LSD_SCOPED.includes(key)) return key; try { const s = JSON.parse(localStorage.getItem('lsd2-session')); return s ? key + '@' + s : key; } catch (e) { return key; } };
+try { if (!JSON.parse(localStorage.getItem('lsd2-session'))) localStorage.setItem('lsd2-enrolled', 'false'); } catch (e) {}
+
+function useStored(key, init) {
+  const [v, setV] = React.useState(() => { try { const s = localStorage.getItem(lsdKey(key)); return s ? JSON.parse(s) : init; } catch (e) { return init; } });
+  const set = x => setV(prev => { const n = typeof x === 'function' ? x(prev) : x; try { localStorage.setItem(lsdKey(key), JSON.stringify(n)); } catch (e) {} setTimeout(() => window.dispatchEvent(new CustomEvent('lsd2-store', { detail: { key, n } })), 0); return n; });
+  React.useEffect(() => { const f = e => { if (e.detail.key === key) setV(e.detail.n); }; addEventListener('lsd2-store', f); return () => removeEventListener('lsd2-store', f); }, [key]);
+  return [v, set];
+}
+
+function useCopy() {
+  const [copied, setCopied] = React.useState(false);
+  const copy = text => { try { navigator.clipboard && navigator.clipboard.writeText(text).catch(() => {}); } catch (e) {} setCopied(true); setTimeout(() => setCopied(false), 1400); };
+  return [copied, copy];
+}
+
+const todayIndex = () => { const d = new Date(); return Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 864e5) % window.LSD2.lessons.length; };
+
+// Language filter note under any free-text field (strict mode).
+// PRODUCTION: route all free text through a server-side moderation API (e.g. OpenAI Moderation / Azure AI Content Safety) PLUS this custom SA wordlist before rendering. Client-side filtering is a placeholder and must not ship as the only defence. Shareable text and Submit a word entries should also be human-reviewed where feasible.
+function BlockNote({ v, msg = 'Not that word, bru.' }) { return window.lsdBlocked && window.lsdBlocked(v) ? <span className="lbl blue">{msg}</span> : null; }
+
+// Name filter: every name or word other people might see (card name + origin, exam name, Submit Word word + name, postcard to/from, enrolment, contact name).
+// name-filter.js + profanity-blocklist.json (loaded in index.html) supply window.ltsdValidateName; allowlisted campaign words always pass. Until the list lands, lsdBlocked stands in.
+// Checked on blur and on submit, never per keystroke. A blocked name shows LTSD_NAME_NO, keeps focus and is never saved.
+const LTSD_NAME_MAX = 24, LTSD_NAME_NO = 'The registrar read that name and said no. Try another one, ekse.';
+function ltsdNameOk(v) {
+  const s = String(v || '').trim(); if (!s) return true;
+  if (s.length > LTSD_NAME_MAX) return false;
+  if (window.ltsdNameAllowed && window.ltsdNameAllowed(s)) return true;
+  // Both filters: the supplied list, plus lsdBlocked (catches stretched spellings like fuuuck that name-filter.js squeezes to two letters).
+  if (window.ltsdValidateName) { const r = window.ltsdValidateName(s); if (!r.ok && r.reason !== 'too_short') return false; }
+  return !(window.lsdBlocked && window.lsdBlocked(s));
+}
+// Keep focus on a rejected field. Once per rejected value, so a second blur on the same value lets you leave.
+const ltsdKeepFocus = (el, v) => { if (!el || el._ltsdNo === v) return; el._ltsdNo = v; setTimeout(() => el.focus(), 0); };
+// Form fields: onBlur={ltsdNameBlur('name', setErr)}. Errors land in the field label like every other form error.
+const ltsdNameBlur = (k, setErr) => e => { const el = e.target, v = el.value; if (ltsdNameOk(v)) return; setErr(x => ({ ...x, [k]: LTSD_NAME_NO })); ltsdKeepFocus(el, v); };
+// Live fields (they draw a card as you type): a draft while typing, committed on blur only when clean. f.clean is the last clean draft, for previews.
+function useNameField(value, commit, extRef) {
+  const own = React.useRef(null), ref = extRef || own;
+  const [draft, setDraft] = React.useState(value || '');
+  const [bad, setBad] = React.useState(false);
+  const clean = React.useRef(ltsdNameOk(value) ? (value || '') : '');
+  React.useEffect(() => { if (document.activeElement !== ref.current) setDraft(value || ''); }, [value]);
+  if (ltsdNameOk(draft)) clean.current = draft;
+  const check = () => { const ok = ltsdNameOk(draft); setBad(!ok); if (ok && commit && draft !== (value || '')) commit(draft); return ok; };
+  const onBlur = () => { if (!check()) ltsdKeepFocus(ref.current, draft); };
+  return { value: draft, bad, check, ref, clean: clean.current, input: { ref, value: draft, maxLength: LTSD_NAME_MAX, onChange: e => setDraft(e.target.value), onBlur, 'aria-invalid': bad || undefined } };
+}
+// Submit: check every field, focus the first rejected one. True when all clean.
+const ltsdNamesOk = (...fs) => { const bad = fs.filter(f => !f.check()); if (bad[0] && bad[0].ref.current) bad[0].ref.current.focus(); return !bad.length; };
+function NameNote({ f }) { return f.bad ? <span className="lbl blue" role="alert">{LTSD_NAME_NO}</span> : null; }
+
+// Pronunciation: one player for the whole site. Clips come from LSD_AUDIO (lessons.js). Nothing preloads; a clip loads on its first tap.
+// One clip at a time: a new tap stops the last. A clip that fails to load is marked bad and its controls disappear. Never in the exam.
+const ltsdSlug = w => String(w || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘'!?.]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+const LTSD_SAY = { a: null, slug: null, st: 'idle', bad: {}, cache: {}, subs: new Set() };
+const saySet = (slug, st) => { LTSD_SAY.slug = slug; LTSD_SAY.st = st; LTSD_SAY.subs.forEach(f => f()); };
+const ltsdClip = w => { const s = ltsdSlug(w), f = (window.LSD_AUDIO || {})[s]; return f && !LTSD_SAY.bad[s] ? f : null; };
+function ltsdStop() { const a = LTSD_SAY.a; if (a) { a.pause(); try { a.currentTime = 0; } catch (e) {} } LTSD_SAY.a = null; saySet(null, 'idle'); }
+function ltsdSay(w) {
+  const s = ltsdSlug(w), f = ltsdClip(w); if (!f) return;
+  if (LTSD_SAY.slug === s && LTSD_SAY.st !== 'idle') { ltsdStop(); return; }
+  ltsdStop();
+  let a = LTSD_SAY.cache[s]; if (!a) { a = LTSD_SAY.cache[s] = new Audio(); a.preload = 'auto'; a.src = LSD_RES(window.LSD_ASSETS + f); }
+  const fail = () => { LTSD_SAY.bad[s] = true; delete LTSD_SAY.cache[s]; if (LTSD_SAY.a === a) LTSD_SAY.a = null; saySet(LTSD_SAY.a ? LTSD_SAY.slug : null, LTSD_SAY.a ? LTSD_SAY.st : 'idle'); };
+  a.onplaying = () => { if (LTSD_SAY.a === a) saySet(s, 'playing'); };
+  a.onended = () => { if (LTSD_SAY.a === a) { LTSD_SAY.a = null; saySet(null, 'idle'); } };
+  a.onerror = fail;
+  LTSD_SAY.a = a; saySet(s, 'loading');
+  const p = a.play(); if (p && p.catch) p.catch(err => { const n = err && err.name; if (n === 'AbortError') return; if (n === 'NotSupportedError') return fail(); if (LTSD_SAY.a === a) { LTSD_SAY.a = null; saySet(null, 'idle'); } });
+  try { window.plausible = window.plausible || function () { (window.plausible.q = window.plausible.q || []).push(arguments); }; window.plausible('hear', { props: { word: w } }); } catch (e) {}
+}
+function useSay(w) {
+  const [, f] = React.useState(0);
+  React.useEffect(() => { const g = () => f(x => x + 1); LTSD_SAY.subs.add(g); return () => { LTSD_SAY.subs.delete(g); }; }, []);
+  return { has: !!ltsdClip(w), st: LTSD_SAY.slug === ltsdSlug(w) ? LTSD_SAY.st : 'idle' };
+}
+// The quiet speaker: after a headword. A span, not a button, so it can sit inside a link without breaking it.
+function SayBtn({ w, className = '' }) {
+  const { has, st } = useSay(w);
+  if (!has) return null;
+  const go = e => { e.preventDefault(); e.stopPropagation(); ltsdSay(w); };
+  return <span role="button" tabIndex={0} className={'say ' + st + (className ? ' ' + className : '')} aria-label={st === 'idle' ? 'Hear ' + w : 'Stop'} title={'Hear ' + w} onClick={go} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') go(e); }}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.5 7.5h3.2L10.5 3.8v12.4L5.7 12.5H2.5z"></path><path className="say-w" d="M13.4 7.2a4 4 0 0 1 0 5.6M15.8 4.9a7.2 7.2 0 0 1 0 10.2"></path></svg></span>;
+}
+
+Object.assign(window, { Fit, MetaFit, useFitInput, ltsdFitText, lsdStageTop, ltsdSlug, ltsdClip, ltsdSay, ltsdStop, useSay, SayBtn, LTSD_SAY, BlockNote, LTSD_NAME_MAX, LTSD_NAME_NO, ltsdNameOk, ltsdKeepFocus, ltsdNameBlur, useNameField, ltsdNamesOk, NameNote, pad2, Sel, ltsdInk, Pop, LookUp, PageHead, useStored, useCopy, todayIndex, Flip, MarksChip, ltReduced, LTSD_WAVE_D, LtsdWave, LtsdLock, LtsdSign, ltsdNo, LTSD_SLUG });

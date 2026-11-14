@@ -1,0 +1,125 @@
+// ORIENTATION (#orientation). O-week: the whole course in 60 seconds. Open to everyone, enrolled or not.
+// First-visit banner lives here too (OrientBanner): before enrolment only; dismissing it or opening this page retires it for good.
+const OR_SEEN = 'lsd2-orient-seen';
+const OR_STEPS = [
+  ['enrol', 'Enrol', 'Free. One form, no password, no inbox admin. Your progress saves on this device.'],
+  ['lessons/01', 'Learn', '50 words. Lessons teach them one at a time; the Dictionary holds them all; Flashcards make them stick.'],
+  ['activities', 'Practise', 'Twelve games. Eleven count for marks on the Class Rankings. The aunties count for honour. Weekly spot prizes for students who actually pitch.'],
+  ['exam', 'The exam', 'Opens 1 Dezemba. 100 questions, pass mark 50, certificate if you make it. No early sittings.'],
+  ['card', 'Graduate', 'Update your student card title, win spot prizes, speak to a prawn with confidence.'],
+];
+const OR_MAP = [
+  ['lessons/01', 'Lessons', 'All 50 words, one at a time, with a local saying it.'],
+  ['dictionary', 'Dictionary', 'The whole syllabus on one page. Skim it on the loo.'],
+  ['activities', 'Games', 'Twelve of them. Eleven count for marks.'],
+  ['leaderboard', 'Rankings', 'Who’s winning. Usually someone from Sandton.'],
+  ['flashcards', 'Flashcards', 'Flip, guess, be honest. The cards can tell.'],
+  ['ekselator', 'Ekselator', 'Paste anything inland. It comes back coastal.'],
+  ['study', 'Study Pack', 'Printables for the flight and the N3.'],
+  ['kit', 'Vy Kit', 'A postcard, an auto-reply and a quiz. For leaving quietly.'],
+  ['exam', 'Exam', '100 marks, one sitting. Opens 1 Dezemba.'],
+  ['submit', 'Submit Word', 'Heard one we don’t know? File it with the intern.'],
+];
+
+// The loop. Shared with the home page's locked section.
+// Next unfinished lesson (lsd2-learnt), or the exam once all 50 are learnt. For enrolled students' "carry on" buttons.
+function useNextLesson() {
+  const [learnt] = useStored('lsd2-learnt', []);
+  const L = (window.LSD2 && window.LSD2.lessons) || [], nx = L.find(l => !(learnt || []).includes(l.n));
+  return nx ? { href: '#lessons/' + nx.n, label: '[ Carry on — Lesson ' + nx.n + ' → ]' } : { href: '#exam', label: '[ Carry on — the final exam → ]' };
+}
+
+function OrSteps({ enrolled }) {
+  return (
+    <ol className="or-steps">
+      {OR_STEPS.map(([to, t, d], i) => (
+        <li key={to}><a className={'card or-step' + (i === 0 && enrolled ? ' done' : '')} href={i === 0 && enrolled ? '#profile' : '#' + to}>
+          <span className="hl or-n">{pad2(i + 1)}</span>
+          <span className="hl or-t">{t}</span>
+          <span className="or-d">{d}</span>
+          {i === 0 && enrolled && <span className="lbl or-done">Done ✓</span>}
+        </a></li>
+      ))}
+    </ol>
+  );
+}
+
+function OrientationScreen() {
+  const [enrolled] = useStored('lsd2-enrolled', false);
+  const [, setSeen] = useStored(OR_SEEN, false);
+  const nx = useNextLesson();
+  React.useEffect(() => { setSeen(true); }, []);
+  const examOpen = lsdNow() >= window.EXAM_UNLOCK;
+  const rules = [
+    ['Do I need an account?', 'No. Enrol once, it lives in your browser.'],
+    ['What are marks?', 'Game points. The rankings are watching.'],
+    ['What’s a vaalie?', <><a href="#lessons/26">Lesson 26</a>. Go.</>],
+    ['Is the exam open?', examOpen ? 'It is. Since 1 Dezemba. Pens out, ekse.' : '1 Dezemba. No early sittings. The ocean is open 24/7 though.'],
+    ['What does it cost?', 'Nothing. It’s a public service.'],
+  ];
+  return (
+    <div className="or">
+      <PageHead kicker="O-week · read this first, ekse" title="Orientation">
+        <p className="lead" style={{ margin: 0 }}>The whole course in 60 seconds. Read it once. Then the beach.</p>
+      </PageHead>
+
+      <section className="sec">
+        <div className="sec-head">
+                    <h2 className="hl h2">Durban speaks its own <Sel>language.</Sel></h2>
+          <p className="lead" style={{ margin: 0 }}>This is the course. A public service by Gateway, free, fluency guaranteed-ish. The exam opens 1 Dezemba.</p>
+        </div>
+        <div className="or-facts">
+          <div><span className="lbl muted">The course</span><b>50 words</b></div>
+          <div><span className="lbl muted">The campus</span><b>Gateway, Umhlanga</b></div>
+          <div><span className="lbl muted">The deadline</span><b>Dezemba</b></div>
+        </div>
+      </section>
+
+      <section className="sec band">
+        <div className="sec-head">
+                    <h2 className="hl h2">Five steps. One of them is the <Sel>beach.</Sel></h2>
+        </div>
+        <OrSteps enrolled={enrolled} />
+      </section>
+
+      <section className="sec">
+        <div className="sec-head">
+                    <h2 className="hl h2">Where everything <Sel>is.</Sel></h2>
+          {!enrolled && <p className="lead" style={{ margin: 0 }}>Most rooms open once you enrol. The door is free.</p>}
+        </div>
+        <div className="or-map">
+          {OR_MAP.map(([to, t, d]) => <a key={to} className="or-row" href={'#' + to}><b>{t}</b><span>{d}</span></a>)}
+        </div>
+      </section>
+
+      <section className="sec band">
+        <div className="sec-head">
+                    <h2 className="hl h2">The bits people <Sel>miss.</Sel></h2>
+        </div>
+        <dl className="or-qa">
+          {rules.map(([q, a]) => <div key={q}><dt>{q}</dt><dd>{a}</dd></div>)}
+        </dl>
+      </section>
+
+      <section className="sec or-go">
+        <span className="lbl">05 · Where to start</span>
+        <a className="btn primary or-big" href={enrolled ? nx.href : '#enrol'}>{enrolled ? nx.label : '[ Enrol, then Lesson 01 ]'}</a>
+        <a className="or-beach" href="#activities/game-04">Or just go to the beach — Durdle is that way.</a>
+      </section>
+    </div>
+  );
+}
+
+function OrientBanner({ page }) {
+  const [enrolled] = useStored('lsd2-enrolled', false);
+  const [seen, setSeen] = useStored(OR_SEEN, false);
+  if (enrolled || seen || page === 'orientation') return null;
+  return (
+    <div className="or-ban" role="note">
+      <span><b>First time here?</b> Orientation explains the whole course in 60 seconds.</span>
+      <span className="or-ban-a"><a className="btn primary sm" href="#orientation">[ Read this first ]</a><button type="button" className="btn line sm" onClick={() => setSeen(true)}>Not now, bru</button></span>
+    </div>
+  );
+}
+
+Object.assign(window, { OrientationScreen, OrientBanner, OrSteps, useNextLesson });

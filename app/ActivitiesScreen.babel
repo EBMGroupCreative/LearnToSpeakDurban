@@ -1,0 +1,128 @@
+const GAMES2 = [
+  { id: 'game-02', t: 'Spot the Vaalie', tag: '5 to find', d: 'A random Durban beach, in writing. Five vaalies are hiding among the locals. New beach every round. Report responsibly.' },
+  { id: 'game-03', t: 'Ja / No Laka', tag: '45 sec', d: '45 seconds of true or false. No laka means yes. Keep up.' },
+  { id: 'game-04', t: 'Durdle', tag: 'Daily · word', d: 'Five letters, six tries, one word a day, all Dezemba. Some days it’s in the Dictionary. Those are the easy days.' },
+  { id: 'game-05', t: 'Pack for Durban', tag: 'Packing', d: 'Pack only what you need. The system will tell you when you’re wrong. Loudly.' },
+  { id: 'game-07', t: 'The braai clock', tag: 'No time', d: 'Guess when the braai is ready. Six guesses. It tells you later or earlier. It’s usually later.', b: 'Guess anyway', h: 'The braai clock.', s: 'The fire is lit. When do we eat?' },
+  { id: 'game-08', t: 'Fork patrol', tag: 'Reflexes', d: 'Forks keep approaching the bunny. You know what to do. Gateway thanks you for your service.', b: 'Report for duty', h: 'Fork patrol.', s: 'Protect the bunny. Confiscate on sight. The shift ends when a fork gets through. Gateway believes in you.' },
+];
+GAMES2.push(
+  { id: 'game-09', t: 'The Great Migration', tag: 'Flying · daily best counts', d: 'Fly south for December, like everyone else. Dodge the boss’s calls. Ducks always arrive.', b: 'Migrate', h: 'The Great Migration.', s: 'Joburg to the beach by air. The work you left behind is following you. Ducks always arrive.' },
+  { id: 'game-14', t: 'Keep it cold', tag: 'Arcade · no cap', d: 'The Durban sun versus your cooler box. You have ice. It has all day. Prawns first.', b: 'Grab the ice', h: 'Keep it cold.', s: 'Everything in the cooler box is warming up. The sun does not take breaks. Neither do prawns.' },
+  { id: 'game-11', t: 'Snap, ekse', tag: 'Timed', d: 'Match the word to the meaning before you forget both. The exam will thank you.', b: 'Flip, bru', h: 'Snap, ekse.', s: 'Sixteen cards. Eight words, eight meanings. The clock starts on your first flip.' },
+  { id: 'game-12', t: 'Lost & Found', tag: 'Daily · wordsearch', d: 'Eight words, lost in the letters, like slops at low tide. The clues only tell you what they mean. Daily.', b: 'Start looking', h: 'Lost & Found.', s: 'Eight dictionary words hidden in the letters, any direction. The clues are meanings, not words. One go a day.' },
+  { id: 'game-13', t: 'The Deck Chair', tag: 'Daily · crossword', d: 'A small crossword for a long chair. A few clues, one coffee, no time pressure. Okay, some time pressure. Daily.', b: 'Sit down', h: 'The Deck Chair.', s: 'A mini crossword, new every day. Type it in, hand it in. Wrong letters only show when you do. One go a day.' },
+);
+GAMES2.push({ id: 'game-15', t: 'Aunties Against Everyone', tag: 'Cards · for honour only', d: 'You know the game. This one has an auntie. Fill the gap, worst answer wins, the auntie’s decision is final and unfair.', b: 'Deal me in', h: 'Aunties Against Everyone.', s: 'You, three students and one auntie. Fill the gap, worst answer wins. No marks, nothing on the Class Rankings. Honour only.', honour: true });
+const DAILIES = ['game-04', 'game-12', 'game-13'];
+
+const gameNo = id => 'GAME-' + pad2(GAMES2.findIndex(g => g.id === id) + 1);
+
+// Preview vignettes: every game gets one mini-UI frame (.gv, 224 × 136) on warm paper. Same frame, same scale, one motif each.
+// Played dailies swap the vignette for today's result: [mini board] [stat].
+const gvRes = p => LSD_RES('assets/' + p);
+const gvGrade = (g, ans) => { const r = Array(5).fill('x'), pool = ans.split(''); g.split('').forEach((c, i) => { if (c === ans[i]) { r[i] = 'g'; pool[i] = null; } }); g.split('').forEach((c, i) => { if (r[i] !== 'g') { const k = pool.indexOf(c); if (k > -1) { r[i] = 'y'; pool[k] = null; } } }); return r; };
+const GV_LF = 'BRUZELAKSHOTAWPLOEKSIMTANDOY', GV_DC = 'SHOT#L#.O.O..P.P#.S#S....';
+const gvStat = (big, small, cls = 'or') => <div className="gv-st"><b className={cls}>{big}</b><span>{small}</span></div>;
+const gvLF = (on, sm) => <div className={'gv-lf' + (sm ? ' sm' : '')}>{GV_LF.split('').map((c, i) => <span key={i} className={on.includes(i) ? 'on' : ''}>{c}</span>)}</div>;
+const gvDC = (full, sm) => <div className={'gv-dc' + (sm ? ' sm' : '')}>{GV_DC.split('').map((c, i) => <span key={i} className={c === '#' ? 'b' : full ? 'on' : ''}>{c === '#' || c === '.' ? '' : c}</span>)}</div>;
+
+function GamePreview({ id, today }) {
+  if (today && id === 'game-04') return <div className="gv"><div className="gv-dd sm">{today.rows.map((r, i) => <div key={i}>{r.map((s, k) => <span key={k} className={s === 'x' ? '' : s}></span>)}</div>)}</div>{gvStat(today.revealed ? '—' : (today.won ? today.rows.length : 'X') + '/6', today.revealed ? 'Revealed' : today.won ? 'Got it' : 'The word won', '')}</div>;
+  if (today && id === 'game-12') return <div className="gv">{gvLF([8, 9, 10, 11, 17, 18, 19, 1, 2], true)}{gvStat(today.found + '/' + today.of, today.revealed ? 'Found · revealed' : 'Found · ' + dgTime(today.secs))}</div>;
+  if (today && id === 'game-13') return <div className="gv">{gvDC(true, true)}{gvStat(today.revealed ? '—' : dgTime(today.secs), today.revealed ? 'Revealed' : today.wrong ? today.wrong + ' wrong' : 'Clean sheet')}</div>;
+  if (id === 'game-02') return <div className="gv gv-col"><div className="gv-pips">{[0, 1, 2, 3, 4].map(i => <i key={i} className={i < 2 ? 'on' : ''}></i>)}</div><div className="gv-ln"><i style={{ width: '88%' }}></i></div><div className="gv-ln"><i style={{ width: '26%' }}></i><i className="hit" style={{ width: '42%' }}></i><i style={{ width: '20%' }}></i></div><div className="gv-ln"><i style={{ width: '76%' }}></i></div><div className="gv-ln"><i style={{ width: '18%' }}></i><i style={{ width: '40%' }}></i></div></div>;
+  if (id === 'game-03') return <div className="gv gv-col"><div className="gv-timer"><i></i></div><div className="gv-q"><div className="gv-ln"><i style={{ width: '92%' }}></i></div><div className="gv-ln"><i style={{ width: '58%' }}></i></div></div><div className="gv-btns"><span className="gv-b p">No laka</span><span className="gv-b">Eish, no</span></div></div>;
+  if (id === 'game-04') return <div className="gv"><div className="gv-dd">{['KOOKS', '', '', ''].map((w, i) => <div key={i}>{[0, 1, 2, 3, 4].map(k => <span key={k} className={!w ? '' : k === 0 ? 'g' : k < 3 ? 'y' : 'n'}>{w[k] || ''}</span>)}</div>)}</div></div>;
+  if (id === 'game-05') return <div className="gv"><div className="gv-pk">{[['sunnies', 'on'], ['puffer-jacket', 'no'], ['slops', 'on'], ['laptop', 'no'], ['cozzie', 'on'], ['sunscreen', '']].map(([p, s]) => <span key={p} className={s}><img src={gvRes('pack/' + p + '.png')} alt="" draggable="false" /></span>)}</div></div>;
+  if (id === 'game-07') return <div className="gv"><div className="gv-clk">{Array.from({ length: 12 }, (_, i) => <i key={i} style={{ transform: 'rotate(' + i * 30 + 'deg)' }}></i>)}<b className="h" style={{ transform: 'rotate(225deg)' }}></b><b className="m" style={{ transform: 'rotate(180deg)' }}></b></div><div className="gv-chips"><span>Earlier</span><span className="on">Later</span></div></div>;
+  if (id === 'game-08') return <div className="gv"><img className="gv-fork l" src={gvRes('pack/fork.png')} alt="" draggable="false" /><span className="gv-o"><img className="gv-bunny" src={gvRes('bunny-chow.png')} alt="Bunny chow" draggable="false" /></span><img className="gv-fork r" src={gvRes('pack/fork.png')} alt="" draggable="false" /></div>;
+  if (id === 'game-09') return <div className="gv gv-sky"><span className="gv-o"><img className="gv-duck" src={gvRes('duck-suitcase.png')} alt="Duck with a suitcase, flying south" draggable="false" /></span></div>;
+  if (id === 'game-14') return <div className="gv gv-sand"><span className="gv-g">Ice<i><i></i></i></span><span className="gv-o"><img className="gv-cooler" src={gvRes('cooler/cooler.png')} alt="Cooler box" draggable="false" /></span></div>;
+  if (id === 'game-15') return <div className="gv"><span className="gv-aa p">The auntie saw <i></i> and said “no laka.”</span><span className="gv-aa a">Socks with slops</span></div>;
+  if (id === 'game-11') return <div className="gv"><div className="gv-sn">{['', 'Shot', '', '', '', '', 'Thank you', ''].map((t, i) => <span key={i} className={i === 1 ? 'w' : i === 6 ? 'm' : ''}>{i === 6 ? <span>Thank<br />you</span> : t}</span>)}</div></div>;
+  if (id === 'game-12') return <div className="gv">{gvLF([8, 9, 10, 11])}</div>;
+  if (id === 'game-13') return <div className="gv">{gvDC(false)}</div>;
+  return <div className="gv"></div>;
+}
+
+// Today's state for the dailies (same day keys the games write). null = not finished today.
+function dailyToday(dd, lf, dc, day) {
+  const out = {};
+  try { const T = durdleToday(); if (dd && dd.day === T.key && dd.answer === T.answer && Array.isArray(dd.rows) && (dd.rows.includes(T.answer) || dd.rows.length >= 6 || dd.revealed)) out['game-04'] = { rows: dd.rows.map(r => gvGrade(r, T.answer)), won: dd.rows.includes(T.answer), revealed: !!dd.revealed }; } catch (e) {}
+  if (lf && lf.day === day && lf.end) out['game-12'] = { found: (lf.found || []).length, of: 8, secs: Math.max(0, Math.round((lf.end - lf.start) / 1000)), revealed: !!lf.revealed };
+  if (dc && dc.day === day && dc.end) out['game-13'] = { secs: Math.max(0, Math.round((dc.end - dc.start) / 1000)), wrong: dc.wrong || 0, revealed: !!dc.revealed };
+  return out;
+}
+
+function NextIn({ onDay }) {
+  const [now, setNow] = React.useState(Date.now);
+  React.useEffect(() => { const t = setInterval(() => { setNow(Date.now()); onDay(dgDay()); }, 1000); return () => clearInterval(t); }, []);
+  const d = new Date(now), s = Math.max(0, Math.floor((new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1) - now) / 1000));
+  return <span className="lbl gd-next">Next puzzles in <b>{pad2(Math.floor(s / 3600)) + ':' + pad2(Math.floor(s / 60) % 60) + ':' + pad2(s % 60)}</b></span>;
+}
+
+function GameTile({ g, best, today, kicBest }) {
+  return (
+    <a href={'#activities/' + g.id} className={'card game-tile' + (today ? ' done' : '')}>
+      <div className="game-prev"><GamePreview id={g.id} today={today} /></div>
+      <div className="game-body">
+        <div className="between lbl"><span className="blue">{gameNo(g.id)}</span><MetaFit className={best ? 'blue' : 'muted'} text={g.honour ? 'For honour · no marks' : best ? 'Your best · ' + ptsFmt(best) : today ? 'Played today · no marks' : 'Not played yet'} /></div>
+        <h3 className="hl">{g.t}</h3>
+        <p>{g.d}</p>
+        {g.id === 'game-14' && <span className="lbl muted">{+kicBest ? 'Longest run · ' + kcClock(+kicBest) + ' · the sun is still going' : 'Longest run · none yet. The prawns are waiting.'}</span>}
+        <div className="game-cta">{today ? <><span className="btn sm game-done" aria-disabled="true">Done for today ✓</span><span className="lbl muted">Back at midnight</span></> : <span className="btn line sm">{g.b || 'Play, bru'}</span>}</div>
+      </div>
+    </a>
+  );
+}
+
+function ActivitiesScreen({ sub }) {
+  const [points] = useStored('lsd2-points', {});
+  const [kicBest] = useStored('lsd2-kic-best', 0);
+  const [dd] = useStored('lsd2-durdle', null), [lf] = useStored('lsd2-lostfound', null), [dc] = useStored('lsd2-deckchair', null);
+  const [day, setDay] = React.useState(dgDay);
+  if (sub && GAMES2.some(g => g.id === sub)) return <GameScreen2 key={sub} id={sub} />;
+  const today = dailyToday(dd, lf, dc, day);
+  // The rest: fixed order (Nov 2026). Anything not listed falls in after, in GAMES2 order.
+  const REST_ORDER = ['game-08', 'game-09', 'game-15', 'game-05', 'game-14', 'game-07', 'game-03', 'game-11', 'game-02'];
+  const ro = g => { const k = REST_ORDER.indexOf(g.id); return k < 0 ? 99 : k; };
+  const rest = GAMES2.filter(g => !DAILIES.includes(g.id)).sort((x, y) => ro(x) - ro(y));
+  return (
+    <div>
+      <PageHead index="02" kicker="Twelve games · one Class Rankings" title="Games">
+        <p className="lead" style={{ margin: 0 }}>Twelve games for practical study. Eleven count for marks — the aunties count for honour. Three are dailies: a fresh puzzle at midnight, one go each. Your best in each marked game goes on the Class Rankings, and therefore your permanent record.</p>
+        <div className="ph-side"><PosCard /><SpotSticker /></div>
+      </PageHead>
+      <section className="gd-band">
+        <div className="gd-head"><div className="gd-stamp" role="img" aria-label="The dailies. New at midnight, one go each."><b>The dailies</b><span>New at midnight · one go each</span></div><NextIn onDay={setDay} /></div>
+        <div className="games games-d">{GAMES2.filter(g => DAILIES.includes(g.id)).map(g => <GameTile key={g.id} g={g} best={points[g.id]} today={today[g.id]} />)}</div>
+      </section>
+      <section className="games-grp">
+        <div className="gd-head gr-head"><div className="gd-stamp" role="img" aria-label="The rest. Replay all you like."><b>The rest</b><span>Replay all you like</span></div></div>
+        <div className="games games-r">{rest.map(g => <GameTile key={g.id} g={g} best={points[g.id]} kicBest={kicBest} />)}</div>
+      </section>
+    </div>
+  );
+}
+
+function GameScreen2({ id }) {
+  const g = GAMES2.find(x => x.id === id);
+  const h = g.h || g.t;
+  const [how, setHow] = React.useState(() => !howSeen().includes(id));
+  const closeHow = () => { setHow(false); try { const s = howSeen(); if (!s.includes(id)) localStorage.setItem('lsd2-how-seen', JSON.stringify([...s, id])); } catch (e) {} };
+  const C = { 'game-02': VaalieGame2, 'game-03': JaGame2, 'game-04': DurdleGame2, 'game-05': PackGame2, 'game-07': BraaiClockGame, 'game-08': ForkPatrolGame, 'game-09': MigrationGame, 'game-14': KeepItColdGame, 'game-11': SnapGame, 'game-12': LostFoundGame, 'game-13': DeckChairGame, 'game-15': AuntiesGame }[id];
+  return (
+    <div>
+      <div className="ph" style={{ paddingBottom: 28 }}>
+        <div className="row"><a className="btn primary sm" href="#activities">← Back to games</a><span className="lbl blue">{gameNo(id)}</span><span className="lbl muted">{g.tag}</span></div>
+        <h1 className="hl gs-h">{h.split(' ').slice(0, -1).join(' ')}{h.includes(' ') ? ' ' : ''}<Sel>{h.split(' ').pop()}</Sel><button type="button" className="how-q" onClick={() => setHow(true)} aria-label="How to play" title="How to play">?</button></h1>
+        <p className="lead" style={{ margin: 0 }}>{g.s || g.d}</p>
+      </div>
+      <div className="card game-stage"><C />{how && <HowTo id={id} title={g.t} onClose={closeHow} />}</div>
+      <div className="row" style={{ marginTop: 24 }}><a className="btn line sm" href="#activities">← Back to games</a>{!g.honour && <a className="btn line sm" href="#leaderboard">See the Class Rankings</a>}</div>
+    </div>
+  );
+}
+
+Object.assign(window, { ActivitiesScreen });

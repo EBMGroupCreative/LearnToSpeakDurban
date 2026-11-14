@@ -1,0 +1,40 @@
+// Spot prizes (Nov 2026): replaces the Study Grant voucher. Information, not a coupon: no barcode, no claim, no redeem.
+// Placed twice: a note on the Student Card page, a sticker on the Games hub that opens the same note.
+// PRODUCTION: the weekly draw runs server-side from active, verified students. Nothing on the site issues or redeems anything.
+const ltsdStamp = (iso, secs) => { if (!iso) return '—'; const d = new Date(iso); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + (secs ? ':' + pad2(d.getSeconds()) : '') + ' · ' + d.getDate() + ' ' + ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][d.getMonth()] + ' ' + d.getFullYear(); };
+
+function SpotPrizeNote({ className = '', onClose }) {
+  return (
+    <div className={'card sp-note' + (className ? ' ' + className : '')}>
+      <div className="between lbl"><span className="blue">Spot prizes · weekly</span>{onClose && <button type="button" className="chip" onClick={onClose}>Close</button>}</div>
+      <div className="hl sp-h">Spot <Sel>prizes.</Sel></div>
+      <p className="sp-p">Every week, Gateway hands out prizes to random students who’ve been putting in the work. Play the games, learn the words, climb the rankings — the more you show up, the better your chances. Winners get told. Everyone else gets told to study harder.</p>
+      <span className="lbl muted sp-fine">Weekly draws from active students · No entry forms · No purchase · Full terms under <a href="#terms" onClick={onClose}>Campaign &amp; Competition Terms</a></span>
+    </div>
+  );
+}
+
+function SpotSticker() {
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => { if (!open) return; const k = e => { if (e.key === 'Escape') setOpen(false); }; addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, [open]);
+  return <>
+    <button type="button" className="sp-stk" onClick={() => setOpen(true)} aria-haspopup="dialog">
+      <svg className="sp-stk-ring" viewBox="0 0 150 150" aria-hidden="true">
+        <circle cx="75" cy="75" r="68" className="sp-stk-dash" />
+        <circle cx="75" cy="75" r="50" className="sp-stk-in" />
+        <path id="ltsdSpTop" d="M18,75 A57,57 0 0 1 132,75" fill="none" />
+        <path id="ltsdSpBot" d="M11,75 A64,64 0 0 0 139,75" fill="none" />
+        <text><textPath href="#ltsdSpTop" startOffset="50%" textAnchor="middle">Weekly spot draws</textPath></text>
+        <text><textPath href="#ltsdSpBot" startOffset="50%" textAnchor="middle">Gateway is watching</textPath></text>
+        <text x="75" y="44" textAnchor="middle" className="sp-stk-c">LTSD</text>
+        <text x="75" y="112" textAnchor="middle" className="sp-stk-c">2026</text>
+      </svg>
+      <span className="sp-stk-r"><span className="sp-stk-t">Play &amp; win</span></span>
+    </button>
+    {open && <div className="scrim sp-scrim" onClick={() => setOpen(false)}>
+      <div role="dialog" aria-modal="true" aria-label="Spot prizes" onClick={e => e.stopPropagation()}><SpotPrizeNote onClose={() => setOpen(false)} /></div>
+    </div>}
+  </>;
+}
+
+Object.assign(window, { ltsdStamp, SpotPrizeNote, SpotSticker });

@@ -1,0 +1,393 @@
+// Study pack downloads hub: the road kit. Printables open as their own A4 sheets (#study/n3, #study/padkos).
+const DL_G = "'Switzer', 'Helvetica Neue', Arial, sans-serif", DL_M = "'IBM Plex Mono', monospace";
+const DL = { blue: (window.LSD_PAL||{}).blue||'#0a63ff', hl: (window.LSD_PAL||{}).hl||'#cde0fb', ink: '#111111', paper: (window.LSD_PAL||{}).paper||'#efefed', muted: '#6e6e73' };
+// Wallpapers: every one of the 50 words, each in two: orange (the original) and paper (the reverse: cream ground, ink type, orange accents).
+// Pairs sit side by side. The picker (DlPicker) lets students take the ones they want; Download takes the lot.
+const DL_WALL_WORDS = (window.LSD_LESSONS || (window.LSD2 && window.LSD2.lessons) || []).map(l => l.w);
+const DL_WALLS = DL_WALL_WORDS.flatMap(w => [[w, 'orange'], [w, 'paper']]);
+// Teams backgrounds: [kind, file name, label]. Text stays in the corners; the middle is for your head.
+const DL_TEAMS = [['beach', 'beachfront', 'Beachfront'], ['gateway', 'gateway', 'Currently at Gateway'], ['blue', 'on-leave-soon', 'On leave soon, ekse'], ['mute', 'on-mute', 'You’re on mute, bru'], ['n3', 'on-the-n3', 'Joining from the N3'], ['ooo', 'out-of-office', 'Out of office. Mentally.'], ['dez', 'dezemba-loading', 'Dezemba loading'], ['shap', 'shap-shap', 'Shap shap'], ['braai', 'could-have-been-a-braai', 'Could have been a braai'], ['brb', 'brb-beach', 'BRB. Beach.'], ['lanyard', 'still-in-a-lanyard', 'Still in a lanyard'], ['tide', 'back-at-low-tide', 'Back at low tide'], ['bunny', 'lunch-bunny', 'Lunch: bunny chow'], ['vy', 'about-to-vy', 'About to vy'], ['robots', 'ocean-view-robots', 'Robots with ocean views'], ['eish', 'eish-another-meeting', 'Eish. Another meeting.'], ['pozi', 'working-from-the-pozi', 'Working from the pozi'], ['kiff', 'kiff-circle-back', 'Kiff. Circle back in Jan'],
+  ['k-aweh', 'aweh-black', 'Aweh. (black)'], ['k-camera', 'camera-off-tan-on', 'Camera off. Tan on.'], ['k-freeze', 'if-i-freeze', 'If I freeze, I’m swimming'], ['k-031', 'dialling-in-from-031', 'Dialling in from 031'], ['k-shap', 'shap-shap-black', 'Shap shap (black)'], ['k-dez', 'dezemba-loading-black', 'Dezemba loading (black)']];
+// Grounds: orange, paper, or ink (the k- ones). Exports at 3840 × 2160 (4K); Teams and Zoom scale it down cleanly.
+const DL_TEAMS_S = 2, DL_WALL_H = 2340, DL_WALL_S = 1440 / 1080; // phone wallpapers: one master, 1440 × 3120 (9 : 19.5)
+const DL_PAPER = '#f4f0ea';
+function dlWave(ctx, x, y, w, col) { if (!window.LTSD_WAVE_D || !window.Path2D) return; const h = w * 24.6 / 418.3; ctx.save(); ctx.translate(x, y); ctx.scale(w / 418.3, h / 24.6); ctx.translate(-40.5, -238); ctx.fillStyle = col; ctx.fill(new Path2D(window.LTSD_WAVE_D)); ctx.restore(); }
+// The selected word: highlight, handles, ink type. Returns the word's width.
+// Display tracking for every download: -0.025 em (tight but never touching). Ink is measured, so the highlight hugs the letters evenly.
+const DL_TRACK = 0; // Switzer's own spacing + kerning: negative tracking made pairs touch at 4K.
+function dlSel(ctx, word, X, base, fs, handle) {
+  ctx.fontKerning = 'normal';
+  ctx.font = `800 ${fs}px ${DL_G}`; ctx.letterSpacing = (DL_TRACK * fs).toFixed(2) + 'px';
+  const m = ctx.measureText(word), il = m.actualBoundingBoxLeft, ir = m.actualBoundingBoxRight, pad = Math.max(6, fs * 0.13); // ink → bar: clear air, never touching
+  const top = base - fs * 0.88, h = fs * 1.14, bx = X - il - pad, bw = il + ir + pad * 2, r = Math.max(6, fs * 0.05), hw = Math.max(3, fs * 0.024);
+  ctx.fillStyle = DL.hl; ctx.fillRect(bx, top, bw, h);
+  ctx.fillStyle = handle; ctx.fillRect(bx - hw / 2, top, hw, h); ctx.fillRect(bx + bw - hw / 2, top, hw, h);
+  ctx.beginPath(); ctx.arc(bx, top - r * 0.7, r, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(bx + bw, top + h + r * 0.7, r, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = DL.ink; ctx.fillText(word, X, base); ctx.letterSpacing = '0px'; return bw + pad;
+}
+
+function dlMono(ctx, t, x, y, sz, col, al = 'left') { ctx.font = `500 ${sz}px ${DL_M}`; ctx.fillStyle = col; ctx.textAlign = al; ctx.letterSpacing = '2px'; ctx.fillText(t.toUpperCase(), x, y); ctx.letterSpacing = '0px'; ctx.textAlign = 'left'; }
+function dlWrap(ctx, text, max) { const out = []; let cur = ''; text.split(' ').forEach(w => { const t = cur ? cur + ' ' + w : w; if (cur && ctx.measureText(t).width > max) { out.push(cur); cur = w; } else cur = t; }); out.push(cur); return out; }
+function dlSave(canvas, name) { return new Promise(res => canvas.toBlob(b => { const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); res(); }, 'image/png')); }
+const dlFonts = () => Promise.all(['800 120px Switzer', '600 40px Switzer', "500 24px 'IBM Plex Mono'"].map(f => document.fonts.load(f))).catch(() => {});
+
+// Teams backgrounds: drawn on a 1920 × 1080 layout, rendered at s× (2 = 3840 × 2160).
+// THE CENTRE IS FOR THE PERSON. Headlines live in the left column (x 64 → 600, about the outer third), stacked bottom-up;
+// small labels sit in the corners; art (waves, bars, logo) hugs the right edge. Nothing big crosses the middle.
+const DL_ZONE = 540;
+function dlHead(ctx, lines, col, handle, opt = {}) {
+  const X = 64, B = opt.base || 1010, Z = opt.zone || DL_ZONE, norm = lines.map(l => typeof l === 'string' ? [[l, 0]] : l);
+  let fs = opt.fs || 66;
+  const setF = () => { ctx.font = `800 ${fs}px ${DL_G}`; ctx.letterSpacing = '0px'; ctx.fontKerning = 'normal'; };
+  const wid = ln => { setF(); return ln.reduce((s, [tx, sel]) => s + ctx.measureText(tx).width + (sel ? fs * 0.3 : 0), 0); };
+  while (fs > 40 && Math.max(...norm.map(wid)) > Z) fs -= 2;
+  const lh = fs * 1.12;
+  norm.forEach((ln, i) => {
+    const y = B - (norm.length - 1 - i) * lh; let x = X;
+    ln.forEach(([tx, sel]) => {
+      setF();
+      if (sel) { const lead = tx.match(/^\s*/)[0]; x += ctx.measureText(lead).width; x += dlSel(ctx, tx.trim(), x + Math.max(6, fs * 0.13), y, fs, handle); }
+      else { ctx.fillStyle = col; ctx.fillText(tx, x, y); x += ctx.measureText(tx).width; }
+    });
+  });
+  return B - norm.length * lh;
+}
+// The campaign lockup for backgrounds: "Learn to speak Durban." (Durban selected) over "A public service by Gateway".
+// Right-aligned to R, top-right corner, so it never sits where the person is. ground: paper | orange | ink.
+function dlLockup(ctx, R, y, ground, fs = 34) {
+  const txt = ground === 'paper' ? DL.ink : '#fff', handle = ground === 'orange' ? '#fff' : DL.blue, sub = ground === 'paper' ? DL.blue : DL.hl;
+  ctx.font = `800 ${fs}px ${DL_G}`; ctx.letterSpacing = '0px'; ctx.fontKerning = 'normal';
+  const a = 'Learn to speak ', aw = ctx.measureText(a).width, m = ctx.measureText('Durban.'), pad = Math.max(6, fs * 0.13), dw = m.actualBoundingBoxLeft + m.actualBoundingBoxRight + pad * 2;
+  const x0 = R - (aw + dw + pad);
+  ctx.fillStyle = txt; ctx.fillText(a, x0, y); dlSel(ctx, 'Durban.', x0 + aw + pad, y, fs, handle);
+  dlMono(ctx, 'A public service by Gateway', R, y + fs * 0.95 + 4, Math.round(fs * 0.44), sub, 'right');
+}
+function dlTeams(kind, logo, s = DL_TEAMS_S) {
+  const c = document.createElement('canvas'); c.width = Math.round(1920 * s); c.height = Math.round(1080 * s); const ctx = c.getContext('2d'); ctx.fontKerning = 'normal'; ctx.textRendering = 'optimizeLegibility'; ctx.scale(s, s); ctx.imageSmoothingQuality = 'high';
+  let ground = 'paper';
+  const bg = col => { ctx.fillStyle = col; ctx.fillRect(0, 0, 1920, 1080); ground = col === DL.ink ? 'ink' : col === DL.blue ? 'orange' : 'paper'; };
+  const days = () => Math.max(0, Math.ceil((new Date(lsdNow().getFullYear(), 11, 1) - lsdNow()) / 864e5));
+  const bar = (track, fill) => { const bw = 420, bx = 1856 - bw; ctx.fillStyle = track; ctx.fillRect(bx, 990, bw, 12); ctx.fillStyle = fill; ctx.fillRect(bx, 990, bw * Math.max(0.08, Math.min(1, 1 - days() / 92)), 12); };
+  const P = DL_PAPER, O = DL.blue, K = DL.ink, W = '#fff';
+  switch (kind) {
+    case 'beach': {
+      const sky = ctx.createLinearGradient(0, 0, 0, 600); sky.addColorStop(0, '#f6f6f4'); sky.addColorStop(1, (window.LSD_PAL||{}).sky||'#dfe9fb'); ctx.fillStyle = sky; ctx.fillRect(0, 0, 1920, 600);
+      ctx.fillStyle = O; ctx.fillRect(0, 600, 1920, 230);
+      ctx.fillStyle = (window.LSD_PAL||{}).sea||'rgba(205,224,251,.55)'; [630, 672, 720, 776].forEach((y, i) => ctx.fillRect(0, y, 1920, 3 + i));
+      ctx.fillStyle = '#e8e3d7'; ctx.fillRect(0, 830, 1920, 250);
+      dlMono(ctx, 'Durban beachfront · 29.86° S, 31.02° E', 64, 1020, 22, K); break; }
+    case 'gateway': bg(DL.paper); if (logo) { const lh = 110, lw = logo.width / logo.height * lh; ctx.drawImage(logo, 1920 - 64 - lw, 1080 - 56 - lh, lw, lh); }
+      dlHead(ctx, ['Currently at', 'Gateway, Durban.'], K, O, { base: 980 }); break;
+    case 'mute': bg(P); dlMono(ctx, 'Meeting etiquette · coastal edition', 64, 92, 22, O);
+      dlHead(ctx, ['You’re on mute,', [['bru.', 1]]], K, O); dlWave(ctx, 1856 - 300, 1000, 300, O); break;
+    case 'n3': bg(O); ctx.fillStyle = 'rgba(255,255,255,.14)'; for (let y = 0; y < 1080; y += 96) ctx.fillRect(1900, y, 6, 52);
+      dlMono(ctx, 'KM 275 · Harrismith · signal: patchy', 64, 92, 22, DL.hl); dlHead(ctx, ['Joining from', 'the N3.'], W, W); dlMono(ctx, 'Passenger seat only', 1856, 1034, 20, W, 'right'); break;
+    case 'ooo': bg(P); if (logo) { const lh = 96, lw = logo.width / logo.height * lh; ctx.drawImage(logo, 1920 - 64 - lw, 1080 - 56 - lh, lw, lh); }
+      dlHead(ctx, ['Out of office.', [['Mentally.', 1]]], K, O); break;
+    case 'dez': bg(P); dlMono(ctx, 'Status · Dezemba', 64, 92, 22, O); dlHead(ctx, ['Dezemba', 'loading…'], K, O); bar('rgba(17,17,17,.1)', O); dlMono(ctx, 'At Durban pace', 1856, 1050, 18, O, 'right'); break;
+    case 'shap': bg(O); dlMono(ctx, 'Lesson 14 · yes, all good, sorted, bye', 64, 92, 22, DL.hl); dlHead(ctx, [[['Shap shap.', 1]]], W, W, { fs: 84 });
+      dlWave(ctx, 1856 - 300, 1000, 300, W); break;
+    case 'braai': bg(P); dlMono(ctx, 'Agenda item 1 of 1', 64, 92, 22, O); dlHead(ctx, ['This meeting', 'could have been', [['a ', 0], ['braai.', 1]]], K, O); break;
+    case 'brb': bg(O); ctx.fillStyle = DL.hl; ctx.fillRect(0, 1048, 1920, 32); dlWave(ctx, 0, 1028, 1920, DL.hl);
+      dlMono(ctx, 'Camera off · connection: coastal', 64, 92, 22, DL.hl); dlHead(ctx, ['BRB.', 'Beach.'], W, W, { base: 970 }); break;
+    case 'lanyard': bg(P); dlMono(ctx, 'Inland office · temporary', 64, 92, 22, O); dlHead(ctx, ['Still in', 'a lanyard.', [['For now.', 1]]], K, O); dlWave(ctx, 1856 - 300, 1000, 300, O); break;
+    case 'tide': bg(O); for (let k = 0; k < 4; k++) dlWave(ctx, 1856 - 360, 880 + k * 36, 360, k % 2 ? DL.hl : W);
+      dlMono(ctx, 'Times approximate · tide not consulted', 64, 92, 22, DL.hl); dlHead(ctx, ['Back at', 'low tide.'], W, W); break;
+    case 'bunny': bg(P); dlMono(ctx, 'Lesson 13 · hands only', 64, 92, 22, O); dlHead(ctx, ['Lunch:', 'bunny chow.', [['No forks.', 1]]], K, O); break;
+    case 'vy': bg(O); dlMono(ctx, 'Lesson 28 · to leave', 64, 92, 22, DL.hl); dlHead(ctx, ['About to', [['vy.', 1]]], W, W); dlMono(ctx, 'No note left', 1856, 1034, 20, W, 'right'); break;
+    case 'robots': bg(P); dlMono(ctx, 'Lesson 21 · robot (n.) a traffic light', 64, 92, 22, O); dlHead(ctx, ['Our robots have', 'ocean views.', 'Yours have', [['more robots.', 1]]], K, O, { fs: 56 }); break;
+    case 'eish': bg(O); dlMono(ctx, 'Calendar · back-to-back · send help', 64, 92, 22, DL.hl); dlHead(ctx, [[['Eish.', 1]], 'Another', 'meeting.'], W, W); dlWave(ctx, 1856 - 300, 1000, 300, W); break;
+    case 'pozi': bg(P); dlMono(ctx, 'Location · home, but make it coastal', 64, 92, 22, O); dlHead(ctx, ['Working', 'from the', [['pozi.', 1]]], K, O); break;
+    case 'kiff': bg(O); dlMono(ctx, 'Lesson 03 · cool, great', 64, 92, 22, DL.hl); dlHead(ctx, [[['Kiff.', 1]], 'Let’s circle back', 'in January.'], W, W); break;
+    case 'k-aweh': bg(K); dlMono(ctx, 'Lesson 01 · a greeting; also happy agreement', 64, 92, 22, DL.hl); dlHead(ctx, [[['Aweh.', 1]]], W, O, { fs: 110 }); dlWave(ctx, 1856 - 300, 1000, 300, O); break;
+    case 'k-camera': bg(K); dlMono(ctx, 'Video · disabled for wellness', 64, 92, 22, DL.hl); dlHead(ctx, ['Camera off.', [['Tan on.', 1]]], W, O); break;
+    case 'k-freeze': bg(K); dlMono(ctx, 'Connection · coastal', 64, 92, 22, DL.hl); dlHead(ctx, ['If I freeze,', [['I’m swimming.', 1]]], W, O); break;
+    case 'k-031': bg(K); dlMono(ctx, 'Area code · the coast', 64, 92, 22, DL.hl); dlHead(ctx, ['Dialling in', [['from ', 0], ['031.', 1]]], W, O); dlMono(ctx, LTSD_SLUG || '031', 1856, 1034, 18, '#a1a1a6', 'right'); break;
+    case 'k-shap': bg(K); dlMono(ctx, 'Lesson 14 · yes, all good, sorted, bye', 64, 92, 22, DL.hl); dlHead(ctx, [[['Shap shap.', 1]]], W, O, { fs: 84 }); dlWave(ctx, 1856 - 300, 1000, 300, O); break;
+    case 'k-dez': bg(K); dlMono(ctx, 'Status · Dezemba', 64, 92, 22, DL.hl); dlHead(ctx, ['Dezemba', 'loading…'], W, O); bar('rgba(255,255,255,.18)', O); dlMono(ctx, 'At Durban pace', 1856, 1050, 18, DL.hl, 'right'); break;
+    default: bg(O); dlMono(ctx, 'On leave soon, ekse', 1856, 1030, 22, W, 'right');
+  }
+  dlLockup(ctx, 1856, 96, kind === 'beach' ? 'paper' : ground);
+  return c;
+}
+
+// Phone wallpapers, 1080 × 1920. The word sits below the lock-screen clock.
+// Word size for a wallpaper: 230 px, shrinking until the ink fits the width.
+// Phone wallpapers: ONE master, 1440 × 3120 (9 : 19.5), drawn on a 1080 × 2340 layout. Every phone crops-to-fill from it.
+// Safe zones: text only inside the central 80% of the width (x 108 → 972), nothing in the top 25% (clock: y < 585)
+// or the bottom 10% (home bar, torch, camera: y > 2106). The ground colour bleeds to all four edges.
+const DL_W_L = 108, DL_W_R = 972, DL_W_TOP = 585, DL_W_BOT = 2106;
+function dlWallFs(ctx, w, max) { let fs = 230; const fit = () => { ctx.font = `800 ${fs}px ${DL_G}`; ctx.letterSpacing = '0px'; const m = ctx.measureText(w); return m.actualBoundingBoxLeft + m.actualBoundingBoxRight + fs * 0.14 + Math.max(12, fs * 0.1); }; while (fit() > max && fs > 96) fs -= 6; return fs; }
+// tone 'orange' = orange ground, white type. tone 'paper' = the reverse: cream ground, ink type, orange label, handles and wave.
+function dlWall(word, tone = 'orange', s = DL_WALL_S) {
+  const L = window.LSD2.lessons, l = L.find(x => x.w === word) || L[0], pp = tone === 'paper', H = DL_WALL_H;
+  const c = document.createElement('canvas'); c.width = Math.round(1080 * s); c.height = Math.round(H * s); const ctx = c.getContext('2d'); ctx.fontKerning = 'normal'; ctx.textRendering = 'optimizeLegibility'; ctx.scale(s, s);
+  ctx.fillStyle = pp ? DL_PAPER : DL.blue; ctx.fillRect(0, 0, 1080, H);
+  const ink = pp ? DL.ink : '#fff', acc = pp ? DL.blue : DL.hl, handle = pp ? DL.blue : '#fff';
+  const fs = dlWallFs(ctx, l.w, DL_W_R - DL_W_L - 24); // 12 px clear of each safe line
+  const X = DL_W_L + 12 + fs * 0.07 + Math.max(6, fs * 0.05), base = 1300; // word box starts on the safe line; label sits well below the clock zone
+  dlMono(ctx, 'Lesson ' + l.n + ' · ' + l.p, X, base - fs - 70, 30, acc);
+  dlSel(ctx, l.w, X, base, fs, handle);
+  ctx.font = `600 46px ${DL_G}`; ctx.fillStyle = ink; dlWrap(ctx, '— ' + l.d, DL_W_R - X).slice(0, 4).forEach((tx, i) => ctx.fillText(tx, X, base + 160 + i * 62));
+  // footer lockup + wave, lifted clear of the bottom 10%
+  dlWave(ctx, X, DL_W_BOT - 170, 420, pp ? DL.blue : '#fff');
+  dlMono(ctx, 'Learn to Speak Durban', X, DL_W_BOT - 84, 24, ink); dlMono(ctx, 'A public service by Gateway', X, DL_W_BOT - 44, 24, acc);
+  return c;
+}
+
+// WhatsApp stickers, 512 × 512 (WhatsApp's fixed sticker size), transparent. The same art also exports at 2048 × 2048 for print and anywhere else. The word, selected: highlight, blue handles, even gap from ink to handle.
+function dlSticker(word, size = 512) {
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = size; const ctx = c.getContext('2d'); ctx.fontKerning = 'normal'; ctx.textRendering = 'optimizeLegibility'; ctx.scale(size / S, size / S); ctx.imageSmoothingQuality = 'high';
+  const GAP = .1, LS = 0, PADY = .07, MAXW = 410;
+  const box = F => { ctx.font = `800 ${F}px ${DL_G}`; ctx.letterSpacing = (LS * F) + 'px'; const m = ctx.measureText(word); const inkL = -m.actualBoundingBoxLeft; return { m, inkL, w: (m.actualBoundingBoxRight - inkL) + 2 * GAP * F }; };
+  let F = S * .30, b = box(F); if (b.w > MAXW) { F = F * MAXW / b.w; b = box(F); }
+  const asc = b.m.fontBoundingBoxAscent ?? F * .8, desc = b.m.fontBoundingBoxDescent ?? F * .2, h = F + 2 * PADY * F, x0 = (S - b.w) / 2, y0 = (S - h) / 2;
+  ctx.fillStyle = DL.hl; ctx.fillRect(x0, y0, b.w, h);
+  ctx.fillStyle = DL.ink; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText(word, x0 + GAP * F - b.inkL, y0 + PADY * F + (F - (asc + desc)) / 2 + asc);
+  const hw = Math.max(2, .035 * F), r = .08 * F, o = .01 * F, lx = x0 - o, rx = x0 + b.w + o - hw;
+  ctx.fillStyle = DL.blue; ctx.fillRect(lx, y0, hw, h); ctx.fillRect(rx, y0, hw, h);
+  ctx.beginPath(); ctx.arc(lx + hw / 2, y0 - .13 * F + r, r, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(rx + hw / 2, y0 + h + .13 * F - r, r, 0, Math.PI * 2); ctx.fill();
+  ctx.letterSpacing = '0px'; return c;
+}
+const dlBlob = (c, type, q) => new Promise(r => c.toBlob(r, type, q));
+async function dlStickerBlob(word) { const c = dlSticker(word); let b = await dlBlob(c, 'image/webp', 1); if (!b || b.type !== 'image/webp') b = await dlBlob(c, 'image/png'); return b; }
+const dlStickerName = (l, b) => 'ltsd-sticker-' + l.n + '-' + l.w.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.' + (b.type === 'image/webp' ? 'webp' : 'png');
+function dlSaveBlob(b, name) { const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 2000); }
+// One zip per multi-file download. Tiny store-only (uncompressed) zip writer: PNG/WebP are already compressed, no library, works offline.
+const DL_CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const dlCrc = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = DL_CRC[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+async function dlZip(entries, zipName) {
+  const enc = new TextEncoder(), parts = [], cent = []; let off = 0;
+  const d = new Date(), dt = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)), dd = (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate());
+  for (const [path, blob] of entries) {
+    const data = new Uint8Array(await blob.arrayBuffer()), nm = enc.encode(path), crc = dlCrc(data);
+    const h = new DataView(new ArrayBuffer(30)); h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true); h.setUint16(10, dt, true); h.setUint16(12, dd, true); h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+    const c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true); c.setUint16(12, dt, true); c.setUint16(14, dd, true); c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+    parts.push(h.buffer, nm, data); cent.push(c.buffer, nm); off += 30 + nm.length + data.length;
+  }
+  const csz = cent.reduce((s, x) => s + x.byteLength, 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, entries.length, true); e.setUint16(10, entries.length, true); e.setUint32(12, csz, true); e.setUint32(16, off, true);
+  dlSaveBlob(new Blob([...parts, ...cent, e.buffer], { type: 'application/zip' }), zipName);
+}
+// All 50 in one zip: WhatsApp caps a pack at 30, so pack-1 (01–30) and pack-2 (31–50), each with its 96 × 96 tray icon.
+async function dlStickerZip() {
+  // Hi-res only: all 50 at 2048 × 2048, transparent PNG. Sticker apps (and WhatsApp's own maker) scale them down on import.
+  const L = window.LSD2.lessons, files = [];
+  for (const l of L) files.push([dlStickerName(l, { type: 'image/png' }), await dlBlob(dlSticker(l.w, 2048), 'image/png')]);
+  await dlZip(files, 'LTSD-whatsapp-stickers.zip');
+}
+
+// Thumbnails for the Teams and wallpaper cards, plus the real file downloads.
+function useDlThumbs() {
+  const [st, setSt] = React.useState({ logo: null, thumbs: null });
+  React.useEffect(() => {
+    let live = true; const im = new Image();
+    const go = ok => dlFonts().then(() => { if (!live) return; const lg = ok ? im : null; setSt({ logo: lg, thumbs: { teams: [0, 1, 18, 3].map(i => dlTeams(DL_TEAMS[i][0], lg, 0.25).toDataURL('image/jpeg', 0.85)), walls: DL_WALLS.slice(0, 6).map(([w, tn]) => dlWall(w, tn, 0.3).toDataURL('image/jpeg', 0.85)), stickers: window.LSD2.lessons.map(l => dlSticker(l.w, 96).toDataURL('image/png')) } }); });
+    im.onload = () => go(true); im.onerror = () => go(false); im.src = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png');
+    return () => { live = false; };
+  }, []);
+  return st;
+}
+// dlOne saves a single file (thumbnail click). dlFiles saves a whole set as ONE zip.
+const dlGap = () => new Promise(r => setTimeout(r, 900));
+async function dlOne(kind, i, logo) {
+  await dlFonts();
+  if (kind === 'stickers') { const l = window.LSD2.lessons[i], b = await dlStickerBlob(l.w); return dlSaveBlob(b, dlStickerName(l, b)); }
+  if (kind === 'teams') { const [k, n] = DL_TEAMS[i]; return dlSave(dlTeams(k, logo), 'ltsd-teams-' + n + '.png'); }
+  const [w, tn] = DL_WALLS[i]; return dlSave(dlWall(w, tn), 'ltsd-wallpaper-' + w.toLowerCase() + '-' + tn + '.png');
+}
+// One file, or a chosen set as one zip.
+const dlName = (kind, i) => kind === 'teams' ? 'ltsd-teams-' + DL_TEAMS[i][1] + '.png' : 'ltsd-wallpaper-' + ltsdSlug(DL_WALLS[i][0]) + '-' + DL_WALLS[i][1] + '.png';
+const dlDraw = (kind, i, logo, s) => kind === 'teams' ? dlTeams(DL_TEAMS[i][0], logo, s) : dlWall(DL_WALLS[i][0], DL_WALLS[i][1], s);
+async function dlPick(kind, idx, logo) {
+  await dlFonts(); if (!idx.length) return;
+  if (idx.length === 1) return dlSave(dlDraw(kind, idx[0], logo), dlName(kind, idx[0]));
+  const files = []; for (const i of idx) files.push([(kind === 'walls' ? DL_WALLS[i][1] + '/' : '') + dlName(kind, i), await dlBlob(dlDraw(kind, i, logo), 'image/png')]);
+  return dlZip(files, kind === 'teams' ? 'LTSD-teams-backgrounds.zip' : 'LTSD-wallpapers.zip');
+}
+// Small preview, drawn full size then scaled down (same art as the file).
+function dlThumb(kind, i, logo) { return dlDraw(kind, i, logo, kind === 'teams' ? 0.3 : 0.32).toDataURL('image/jpeg', 0.85); }
+// The picker: every background or wallpaper, tap to choose, download the chosen ones (one zip). Thumbs draw a few per frame.
+function DlPicker({ kind, logo, onClose }) {
+  const all = kind === 'teams' ? DL_TEAMS : DL_WALLS;
+  const [thumbs, setThumbs] = React.useState([]);
+  const [pick, setPick] = React.useState([]);
+  const [tone, setTone] = React.useState('all');
+  const [busy, setBusy] = React.useState(false);
+  React.useEffect(() => { let live = true, i = 0; const out = []; const step = () => { if (!live) return; const end = Math.min(all.length, i + (kind === 'teams' ? 3 : 6)); for (; i < end; i++) out[i] = dlThumb(kind, i, logo); setThumbs([...out]); if (i < all.length) setTimeout(step, 16); }; dlFonts().then(() => setTimeout(step, 0)); return () => { live = false; }; }, [kind]);
+  React.useEffect(() => { const k = e => { if (e.key === 'Escape') onClose(); }; addEventListener('keydown', k); document.documentElement.classList.add('ct-open'); return () => { removeEventListener('keydown', k); document.documentElement.classList.remove('ct-open'); }; }, []);
+  const shown = all.map((x, i) => i).filter(i => kind !== 'walls' || tone === 'all' || DL_WALLS[i][1] === tone);
+  const tog = i => setPick(p => p.includes(i) ? p.filter(x => x !== i) : [...p, i].sort((a, b) => a - b));
+  const allOn = shown.every(i => pick.includes(i));
+  const go = async idx => { if (busy || !idx.length) return; setBusy(true); try { await dlPick(kind, idx, logo); ltsdToast(idx.length === 1 ? 'Downloaded. Check your downloads folder.' : idx.length + ' in one zip. Check your downloads folder.'); } finally { setBusy(false); } };
+  const lab = i => kind === 'teams' ? DL_TEAMS[i][2] : DL_WALLS[i][0] + (DL_WALLS[i][1] === 'paper' ? ' · reverse' : ' · orange');
+  return (
+    <div className="scrim" onClick={onClose}>
+      <div className="dlp" role="dialog" aria-modal="true" aria-label={kind === 'teams' ? 'Choose Teams backgrounds' : 'Choose wallpapers'} onClick={e => e.stopPropagation()}>
+        <div className="dlp-top">
+          <div className="between lbl"><span className="blue">{kind === 'teams' ? 'Teams backgrounds · ' + all.length : 'Wallpapers · all 50 words · ' + all.length}</span><button type="button" className="chip" style={{ padding: '6px 12px', fontSize: 13 }} onClick={onClose}>Close</button></div>
+          <div className="hl" style={{ fontSize: 'clamp(30px, 3vw, 44px)' }}>{kind === 'teams' ? <>Pick your <Sel>excuse.</Sel></> : <>Pick your <Sel>words.</Sel></>}</div>
+          <div className="dlp-bar">
+            {kind === 'walls' && <div className="row" style={{ gap: 6 }}>{[['all', 'Both'], ['orange', 'Orange'], ['paper', 'Reverse']].map(([k, l]) => <button key={k} type="button" className={'chip' + (tone === k ? ' on' : '')} onClick={() => setTone(k)}>{l}</button>)}</div>}
+            <button type="button" className="btn line sm" onClick={() => setPick(p => allOn ? p.filter(i => !shown.includes(i)) : [...new Set([...p, ...shown])].sort((a, b) => a - b))}>{allOn ? 'Clear these' : 'Select all these'}</button>
+            <button type="button" className="btn primary sm" disabled={!pick.length || busy} onClick={() => go(pick)}>{busy ? 'Packing…' : pick.length ? '[ Download ' + pick.length + ' ]' : 'Tap to choose'}</button>
+          </div>
+        </div>
+        <div className={'dlp-grid ' + kind}>{shown.map(i => <button key={i} type="button" className={'dlp-i' + (pick.includes(i) ? ' on' : '')} aria-pressed={pick.includes(i)} onClick={() => tog(i)}>{thumbs[i] ? <img src={thumbs[i]} alt="" /> : <span className="dlp-wait"></span>}<span className="dlp-l">{lab(i)}</span><i aria-hidden="true">✓</i></button>)}</div>
+      </div>
+    </div>
+  );
+}
+async function dlFiles(kind, logo) {
+  if (kind === 'stickers') { await dlFonts(); return dlStickerZip(); }
+  await dlFonts();
+  // One at a time: full-size canvases are big, so each becomes a PNG before the next is drawn.
+  return dlPick(kind, (kind === 'teams' ? DL_TEAMS : DL_WALLS).map((x, i) => i), logo);
+}
+
+// ---- Printable sheets ----
+const N3_STOPS = [
+  { km: '0', at: 'Joburg', to: 'Heidelberg', from: 1, until: 6, line: 'Six words before the first petrol stop. Aweh to the highway.' },
+  { km: '≈ 115', at: 'Vaal River', lessons: ['17'], line: 'Lesson 17, obviously. The coast. One coast. Not the Vaal.' },
+  { km: '≈ 115–275', at: 'Villiers', to: 'Harrismith', from: 7, until: 22, skip: ['17'], line: 'The long flat bit. Fifteen words, one per cattle grid.' },
+  { km: '≈ 275', at: 'Harrismith', line: 'Halfway down the road. 22 words in. Pie break. Do not skip the pie break.', stop: true },
+  { km: '≈ 300', at: 'Van Reenen’s Pass', line: 'Revise. Lessons 01–22 on the way down the mountain. Gears low, vocabulary high.', stop: true },
+  { km: '≈ 300–450', at: 'Ladysmith', to: 'Mooi River', from: 23, until: 32, line: 'Ten words. The air gets thicker. That’s the humidity. It’s on your side.' },
+  { km: '≈ 450–540', at: 'Pietermaritzburg', to: 'Pinetown', from: 33, until: 50, line: 'The last eighteen. Fields Hill: say them out loud. Nobody can hear you over the brakes.' },
+  { km: '≈ 545', at: 'The tollgate arches', line: 'Fluent. Welcome home.', stop: true, end: true },
+];
+
+function SheetBar({ title, note = 'prints on one page' }) {
+  return (
+    <div className="sheet-bar no-print">
+      <a className="btn line sm" href="#study">← Back to the study pack</a>
+      <span className="lbl muted">{title + ' · A4 · ' + note}</span>
+      <button type="button" className="btn primary sm" onClick={() => window.print()}>[ Print ]</button>
+    </div>
+  );
+}
+
+function N3Sheet() {
+  const L = window.LSD2.lessons;
+  const words = s => s.lessons ? L.filter(l => s.lessons.includes(l.n)) : s.from ? L.filter(l => +l.n >= s.from && +l.n <= s.until && !(s.skip || []).includes(l.n)) : [];
+  return (
+    <div className="sheet-wrap">
+      <SheetBar title="The N3 Syllabus" />
+      <div className="a4">
+        <div className="between lbl"><span className="blue">KIT-01 · Learn by landmark</span><span className="muted">Joburg → Durban · ≈ 570 km</span></div>
+        <h1 className="hl a4-h">The N3 <Sel>Syllabus.</Sel></h1>
+        <p className="a4-lead">A study plan keyed to the drive. Tick each stop as you pass it. Passenger seat only. The driver is studying the road.</p>
+        <div className="n3-route">
+          {N3_STOPS.map((s, i) => { const w = words(s); return (
+            <div key={i} className={'n3-stop' + (s.stop ? ' pin' : '') + (s.end ? ' end' : '')}>
+              <span className="lbl muted">{'KM ' + s.km}</span>
+              <span className="n3-box"></span>
+              <div className="n3-body">
+                <div className="n3-at">{s.at}{s.to ? ' → ' + s.to : ''}{w.length ? <span className="lbl blue">{w.length === 1 ? '  Lesson ' + w[0].n : '  Lessons ' + w[0].n + '–' + w[w.length - 1].n}</span> : null}</div>
+                <div className="n3-line">{s.end ? <Sel>{s.line}</Sel> : s.line}</div>
+                {w.length > 0 && <div className="n3-words">{w.map(l => l.w).join(' · ')}</div>}
+              </div>
+            </div>
+          ); })}
+        </div>
+        <div className="a4-foot"><span className="lbl">Learn to Speak Durban. A public service by Gateway.</span><span className="lbl muted">learntospeakdurban.com</span></div>
+      </div>
+    </div>
+  );
+}
+
+// AUNTIES AGAINST EVERYONE (the home edition). Rules page, prompt sheets (6 per A4, a cover card first), answer sheets (8 per A4), and one back sheet each.
+// #study/aunties/print opens the sheets and fires the print dialog once fonts and images are in. #study/aunties/print-bw does the same in black and white.
+// Black & white: no solid fills anywhere (frames instead of orange/ink grounds, outlined highlights, black logos) so it runs on toner, not budget.
+const NL_BW_LINE = 'For the office printer, on the office’s toner. Consider it a leave-day bonus.';
+const NL_RULES = [
+  '3+ players. Deal 7 answer cards each.',
+  'One player is The Auntie — her judging is final and unjust.',
+  'The Auntie reads a prompt card. Everyone else plays an answer card face down.',
+  'She reads them aloud, dramatically, and crowns the funniest. Winner keeps the prompt.',
+  'New round, new Auntie.',
+  'First to 5 prompts is FLUENT and must be called ‘mfethu’ by everyone for the rest of the day.',
+  'THE EKSE CARD is wild — it fits any blank, but you must say the full sentence out loud, with confidence.',
+  'Disputes are settled by the Auntie. There is no higher court.',
+];
+const nlChunks = (a, n) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
+const nlBlank = t => t.split('____').map((p, i, arr) => i < arr.length - 1 ? <React.Fragment key={i}>{p}<span className="nl-blank"></span></React.Fragment> : <React.Fragment key={i}>{p}</React.Fragment>);
+
+function NoLakaSheets() {
+  const C = window.NOLAKA || { prompts: [], answers: [] };
+  const LOGO = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png'), LOGO_W = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo-white.png');
+  const answers = [...C.answers.map(t => ({ t })), { t: 'Ekse.', wild: true }];
+  const P = nlChunks([{ cover: true, n: 0 }, ...C.prompts.map((t, i) => ({ t, n: i + 1 }))], 6), A = nlChunks(answers.map((x, i) => ({ ...x, n: i + 1 })), 8);
+  const [bw, setBw] = React.useState(() => /\/print-bw$/.test(location.hash) || (() => { try { return sessionStorage.getItem('lsd2-aae-bw') === '1'; } catch (e) { return false; } })());
+  const pickBw = v => { setBw(v); try { sessionStorage.setItem('lsd2-aae-bw', v ? '1' : '0'); } catch (e) {} };
+  React.useEffect(() => {
+    if (!/\/print(-bw)?$/.test(location.hash)) return;
+    history.replaceState(null, '', '#study/aunties');
+    const imgs = [...document.querySelectorAll('.nl-scroll img')].map(i => i.complete ? null : new Promise(r => { i.onload = i.onerror = r; })).filter(Boolean);
+    let t; Promise.all([document.fonts ? document.fonts.ready : null, ...imgs]).then(() => { t = setTimeout(() => window.print(), 400); });
+    return () => clearTimeout(t);
+  }, []);
+  const pages = 1 + P.length + A.length + 2;
+  const Top = ({ k, i, of }) => <div className="nl-top"><div className="nl-top-r"><LtsdLock /><span className="lbl">Aunties Against Everyone · the home edition</span></div><div className="lbl nl-cap">{k + (of ? ' · sheet ' + i + ' / ' + of : '') + ' · Print on A4 at 100% · cut along the dashes · argue at the table'}</div></div>;
+  const Foot = () => <div className="nl-foot"><span className="lbl muted">learntospeakdurban.com</span><span className="lbl muted">REF: LTSD-2026 · Study pack · PACK-10</span></div>;
+  const Mark = ({ white, no }) => <LtsdSign light={white} no={no} />, NP = C.prompts.length;
+  return (
+    <div className={'sheet-wrap' + (bw ? ' nl-bw' : '')}>
+      <div className="sheet-bar no-print">
+        <a className="btn line sm" href="#study">← Back to the study pack</a>
+        <span className="lbl muted">{'Aunties Against Everyone · ' + (bw ? 'black & white · ' : '') + pages + ' A4 pages · 1 cover card · ' + C.prompts.length + ' prompts · ' + answers.length + ' answers'}</span>
+        <div className="row" style={{ gap: 8 }}><div className="nl-ink" role="group" aria-label="Print in"><button type="button" className={'chip' + (!bw ? ' on' : '')} aria-pressed={!bw} onClick={() => pickBw(false)}>Colour</button><button type="button" className={'chip' + (bw ? ' on' : '')} aria-pressed={bw} onClick={() => pickBw(true)}>Black & white</button></div><button type="button" className="btn primary sm" onClick={() => window.print()}>[ Print the deck ]</button></div>
+      </div>
+      {bw && <div className="sheet-bar no-print"><span className="lbl blue lt-note" key="bw">{'Black & white edition · ' + NL_BW_LINE}</span></div>}
+      <div className="nl-scroll">
+        <div className="a4 nl-page nl-rules">
+          <div className="nl-cover">
+            <div className="between lbl"><span>Learn to Speak Durban · Study pack · PACK-10</span><img src={LOGO_W} alt="Gateway" /></div>
+            <h1 className="hl" style={{ fontSize: 66 }}>Aunties Against<br /><Sel>Everyone.</Sel></h1>
+            <p>{bw ? 'The home edition, black and white. Print, cut, argue.' : 'The home edition. Print, cut, argue.'}</p>
+            {bw && <span className="nl-bw-line">{NL_BW_LINE}</span>}
+            <div className="lbl">{'3+ players · ' + C.prompts.length + ' prompts · ' + C.answers.length + ' answers · 1 Ekse card'}</div>
+          </div>
+          <div className="lbl blue" style={{ marginTop: 6 }}>How to play</div>
+          <ol className="nl-steps">{NL_RULES.map((r, i) => <li key={r}><b>{pad2(i + 1)}</b><span>{r}</span></li>)}</ol>
+          <div className="nl-box">
+            <span className="lbl blue">Printing</span>
+            <span>Print on A4. For proper card backs, print the two back sheets on the reverse of the prompt and answer sheets. Cut along the dashes. The Auntie won’t check. She will judge.</span>
+          </div>
+          <Foot />
+        </div>
+        {P.map((pg, i) => (
+          <div key={'p' + i} className="a4 nl-page">
+            <Top k="Prompt cards" i={i + 1} of={P.length} />
+            <div className="nl-grid p">{pg.map(c => c.cover
+              ? <div key="cover" className="nl-card cover"><span className="lbl nl-k">The home edition</span><div className="hl nl-cover-t">Aunties Against <Sel>Everyone.</Sel></div><p className="nl-cover-p">Print, cut, argue. An actual auntie improves the experience but is not included.</p><Mark white /></div>
+              : <div key={c.n} className="nl-card prompt"><span className="lbl nl-k">Prompt</span><div className="nl-t">{nlBlank(c.t)}</div><Mark white no={ltsdNo(c.n - 1)} /></div>)}</div>
+            <Foot />
+          </div>
+        ))}
+        {A.map((pg, i) => (
+          <div key={'a' + i} className="a4 nl-page">
+            <Top k="Answer cards" i={i + 1} of={A.length} />
+            <div className="nl-grid a">{pg.map(c => c.wild
+              ? <div key={c.n} className="nl-card ekse"><span className="lbl nl-k">Wild card</span><div className="nl-t"><Sel>Ekse.</Sel></div><div className="nl-wild">Fits any blank. Say the full sentence out loud, with confidence.</div><Mark no="Dial 031 for assistance" /></div>
+              : <div key={c.n} className="nl-card answer"><div className="nl-t">{c.t}</div><Mark no={ltsdNo(NP + c.n - 1)} /></div>)}</div>
+            <Foot />
+          </div>
+        ))}
+        <div className="a4 nl-page">
+          <Top k="Prompt card backs · print on the reverse" />
+          <div className="nl-grid p">{[0, 1, 2, 3, 4, 5].map(i => <div key={i} className="nl-card prompt back"><LtsdLock light center /><LtsdWave /></div>)}</div>
+          <Foot />
+        </div>
+        <div className="a4 nl-page">
+          <Top k="Answer card backs · print on the reverse" />
+          <div className="nl-grid a">{[0, 1, 2, 3, 4, 5, 6, 7].map(i => <div key={i} className="nl-card answer back"><LtsdLock center /><LtsdWave /></div>)}</div>
+          <Foot />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { useDlThumbs, dlFiles, dlOne, dlPick, DlPicker, dlZip, dlBlob, dlSaveBlob, dlSticker, dlStickerZip, dlWall, dlTeams, dlFonts, DL_WALL_S, DL_TEAMS_S, DL_WALL_WORDS, DL_WALLS, DL_TEAMS, N3Sheet, NoLakaSheets });

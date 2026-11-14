@@ -1,0 +1,279 @@
+// Site-wide fork counter: 37 + every fork confiscated in Fork Patrol (persisted in localStorage).
+const forksTotal = n => (37 + (+n || 0)).toLocaleString('en-US');
+// One study pack: everything for the flight and the drive. Download all, or one by one. Everything stays openable either way.
+const PACKS2 = [
+  { id: 'PACK-01', to: 'dictionary', name: 'The Dictionary', fmt: 'PDF · 50 entries', mb: 2.1, d: 'Every lesson, every example line. Printable. Works at 10,000 metres.' },
+  { id: 'PACK-02', to: 'lessons/01', name: 'Radio lessons', fmt: 'MP3 · 50 tracks', mb: 46.2, d: 'Hear each word said properly. Recommended for the flight in.' },
+  { id: 'PACK-03', to: 'flashcards', name: 'Flashcards', fmt: 'PDF · 50 cards', mb: 1.4, d: 'Cut along the dotted line. Test the person in seat 14B.' },
+  { id: 'PACK-04', to: 'exam', name: 'Final exam, offline', fmt: 'App data', mb: 0.3, d: 'Write the exam in flight mode. It hands itself in when you land.' },
+  { id: 'PACK-05', to: 'activities/game-03', name: 'Ja / No Laka', fmt: 'App data', mb: 0.8, d: 'The true-false game, offline. No laka still means yes at altitude.' },
+  { id: 'PACK-06', to: 'study/n3', open: 'Pack the route', name: 'The N3 Syllabus', fmt: 'Printable · A4', mb: 0.6, d: 'Learn by landmark. A study plan keyed to the drive: Joburg to Heidelberg, lessons 1–6. Vaal River: lesson 17, obviously. Harrismith: halfway, 22 words, pie break. Van Reenen’s Pass: revise. The tollgate arches: fluent, welcome home.' },
+  { id: 'PACK-07', files: 'stickers', dlLabel: 'Download the pack', name: 'WhatsApp stickers', fmt: 'WebP · 512 × 512 · 50', mb: 1.1, d: 'All 50 words, selected, as stickers. Two packs, because WhatsApp stops at 30. Your auntie will take it from here.' },
+  { id: 'PACK-08', files: 'teams', dlLabel: 'Download all', name: 'Teams backgrounds', fmt: 'PNG · 4K · 3840 × 2160 · 24', mb: 96, d: 'For your last meetings before leave. Look checked out, beautifully.' },
+  { id: 'PACK-09', files: 'walls', dlLabel: 'Download all 100', name: 'Wallpapers', fmt: 'PNG · 1290 × 2796 · 100', mb: 160, d: 'All 50 words for your lock screen, each in orange or the reverse. Pick the ones you want, or take the lot. Fluency by osmosis.' },
+  { id: 'PACK-10', to: 'study/aunties/print', open: 'Print the deck', name: 'Aunties Against Everyone', fmt: 'Printable · A4 · 291 cards', mb: 3.4, d: 'The home edition. Fill the gap, worst answer wins, the auntie’s decision is final and unfair. Print, cut, argue. Or play it against three students on the Games page.' },
+  { id: 'PACK-11', link: 'playlist', open: 'Press play', name: 'The road trip playlist', fmt: 'Playlist', d: 'Gqom and yano for the N3. Six hours of it. By Harrismith you’ll stop asking “are we there yet.”' },
+];
+// PRODUCTION — real Spotify and Apple Music playlist links.
+const PLAYLIST_URL = 'https://open.spotify.com/playlist/4lbjRGukzSVUvbZq91tbI6';
+const APPLE_MUSIC_URL = 'https://music.apple.com/za/playlist/learn-to-speak-durban/pl.u-AkAmPlyUlVNPMX5';
+const PACKS_DL = PACKS2.filter(p => !p.link);
+// Goodies page order: what only exists here first, then the course packaged to take away.
+const PK_FUN = ['PACK-09', 'PACK-07', 'PACK-08', 'PACK-10', 'PACK-11'];
+const PK_COURSE = ['PACK-01', 'PACK-02', 'PACK-03', 'PACK-04', 'PACK-06', 'PACK-05'];
+
+function StudyScreen({ sub }) {
+  if (sub === 'n3') return <N3Sheet />;
+  if (sub === 'aunties' || sub === 'nolaka' || sub === 'padkos') return <NoLakaSheets />;
+  if (sub === 'office') return <OfficeSheets part={location.hash.split('/')[2]} />;
+  return <StudyHub />;
+}
+
+// ---- GOODIES (#study). Two grids, one card anatomy (same as the game cards): preview wash, title, one line, one button.
+// No download-manager fiction: the browser manages downloads. Multi-file sets download as one zip; choosers let you take only some.
+const gdSlug = s => ltsdSlug(s) || 'x';
+// Chooser sets. Each item: label, grp (filter chip), w × h (full size), render(k) → canvas at k × full size, path (file name in the zip).
+function gdSet(kind, logo) {
+  const ex = g => EXILE.filter(x => x.g === g);
+  const exItem = (x, grp, dir) => ({ label: x.name, grp, w: x.w, h: x.h, light: true, render: k => exRender(x, logo, k), path: dir + 'ltsd-' + x.id + '-' + x.w + 'x' + x.h + '.png' });
+  if (kind === 'walls') return [
+    ...DL_WALLS.map(([w, tn]) => ({ label: w + (tn === 'paper' ? ' · reverse' : ' · orange'), grp: tn === 'paper' ? 'Lock · reverse' : 'Lock · orange', w: 1440, h: 3120, light: tn === 'paper', render: k => dlWall(w, tn, DL_WALL_S * k), path: 'phone-' + tn + '/ltsd-wallpaper-' + gdSlug(w) + '-' + tn + '.png' })),
+    ...DL_WALL_WORDS.map(w => exItem(exHomeItem(w), 'Home screen', 'phone-home/')),
+    ...ex('lock').map(x => exItem(x, 'Slogans · phone', 'phone-slogans/')), ...ex('deskslogan').map(x => exItem(x, 'Slogans · desktop', 'desktop/')), ...ex('desk').map(x => exItem(x, 'Desktop', 'desktop/')),
+  ];
+  if (kind === 'covers') return [...ex('covers').map(x => exItem(x, 'Classics', '')), ...DL_WALL_WORDS.flatMap(w => [exItem(exFavItem(w, 'x'), 'Your word · X', 'x/'), exItem(exFavItem(w, 'fb'), 'Your word · Facebook', 'facebook/')])];
+  if (kind === 'meet') return [...DL_TEAMS.map(([k, n, l]) => ({ label: l, grp: '4K', w: 3840, h: 2160, render: s => dlTeams(k, logo, DL_TEAMS_S * s), path: 'ltsd-teams-' + n + '.png' })), ...ex('meet').map(x => exItem(x, 'Classic', ''))];
+  return [];
+}
+const GD_ZIP = { walls: 'LTSD-wallpapers.zip', covers: 'LTSD-profile-covers.zip', meet: 'LTSD-meeting-backgrounds.zip' };
+async function gdDownload(kind, items) {
+  await dlFonts(); if (!items.length) return;
+  if (items.length === 1) { const it = items[0]; return dlSaveBlob(await dlBlob(it.render(1), 'image/png'), it.path.split('/').pop()); }
+  const files = []; for (const it of items) files.push([it.path, await dlBlob(it.render(1), 'image/png')]); // one at a time: full-size canvases are big
+  return dlZip(files, GD_ZIP[kind]);
+}
+// Syllabus.ics: a word a day, generated on the spot. 50 all-day events in syllabus order starting TOMORROW, then "Final exam." on day 51.
+// Title = the word with its full stop. Description = (pos) — definition, the locked E.g. line in quotes, the site. Reminder 08:00.
+// Declares its own calendar name + colour (X-WR-CALNAME, RFC 7986 NAME/COLOR). Apps that ignore them use the person's default; that's fine.
+const icsEsc = s => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+const icsFold = line => { const enc = new TextEncoder(); if (enc.encode(line).length <= 75) return line; const out = []; let cur = '', n = 0; for (const ch of line) { const b = enc.encode(ch).length; if (n + b > (out.length ? 74 : 75)) { out.push(cur); cur = ''; n = 0; } cur += ch; n += b; } out.push(cur); return out.join('\r\n '); };
+const icsDate = d => d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate());
+function gdSyllabusIcs() {
+  const L = window.LSD2.lessons, now = new Date(), stamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+  const day = i => new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1 + i);
+  const ev = (i, title, desc, uid) => ['BEGIN:VEVENT', 'UID:' + uid + '-' + icsDate(day(0)) + '@learntospeakdurban.com', 'DTSTAMP:' + stamp, 'DTSTART;VALUE=DATE:' + icsDate(day(i)), 'DTEND;VALUE=DATE:' + icsDate(day(i + 1)), 'SUMMARY:' + icsEsc(title), 'DESCRIPTION:' + icsEsc(desc), 'TRANSP:TRANSPARENT', 'COLOR:orange', 'BEGIN:VALARM', 'ACTION:DISPLAY', 'TRIGGER;RELATED=START:PT8H', 'DESCRIPTION:' + icsEsc(title), 'END:VALARM', 'END:VEVENT'];
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Gateway//Learn to Speak Durban//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Learn to Speak Durban', 'NAME:Learn to Speak Durban', 'COLOR:orange', 'X-APPLE-CALENDAR-COLOR:#E8571E',
+    ...L.flatMap((l, i) => ev(i, l.w.replace(/[.!?]$/, '') + (/[!?]$/.test(l.w) ? l.w.slice(-1) : '.'), '(' + l.p + ') — ' + l.d + (l.e ? '\n“' + l.e + '”' : '') + '\n' + LTSD_DOMAIN, 'ltsd-' + l.n)),
+    ...ev(L.length, 'Final exam.', 'You’re ready, ekse. ' + LTSD_DOMAIN, 'ltsd-exam'), 'END:VCALENDAR', ''];
+  dlSaveBlob(new Blob([lines.map(icsFold).join('\r\n')], { type: 'text/calendar;charset=utf-8' }), 'Syllabus.ics');
+}
+// Radio lessons: the real pronunciation clips, one zip.
+async function gdAudioZip() {
+  const A = window.LSD_AUDIO || {}, files = [];
+  for (const [slug, f] of Object.entries(A)) { try { const r = await fetch(LSD_RES(window.LSD_ASSETS + f)); if (r.ok) files.push(['ltsd-' + slug + '.mp3', await r.blob()]); } catch (e) {} }
+  if (!files.length) { ltsdToast('The radio is off air. Try again in a minute.'); return; }
+  await dlZip(files, 'LTSD-radio-lessons.zip');
+}
+function GoodiesPicker({ kind, title, head, logo, onClose }) {
+  const items = React.useMemo(() => gdSet(kind, logo), [kind, logo]);
+  const grps = [...new Set(items.map(x => x.grp))];
+  const [thumbs, setThumbs] = React.useState([]);
+  const [pick, setPick] = React.useState([]);
+  const [g, setG] = React.useState('all');
+  const [busy, setBusy] = React.useState(false);
+  const [q, setQ] = React.useState('');
+  React.useEffect(() => { let live = true, i = 0; const out = []; const step = () => { if (!live) return; const end = Math.min(items.length, i + 4); for (; i < end; i++) { const it = items[i]; out[i] = it.render(Math.min(240 / it.w, 240 / it.h)).toDataURL('image/jpeg', 0.85); } setThumbs([...out]); if (i < items.length) setTimeout(step, 16); }; dlFonts().then(() => setTimeout(step, 0)); return () => { live = false; }; }, [items]);
+  React.useEffect(() => { const k = e => { if (e.key === 'Escape') onClose(); }; addEventListener('keydown', k); document.documentElement.classList.add('ct-open'); return () => { removeEventListener('keydown', k); document.documentElement.classList.remove('ct-open'); }; }, []);
+  const qq = q.trim().toLowerCase();
+  const shown = items.map((x, i) => i).filter(i => (g === 'all' || items[i].grp === g) && (!qq || items[i].label.toLowerCase().includes(qq)));
+  const tog = i => setPick(p => p.includes(i) ? p.filter(x => x !== i) : [...p, i].sort((a, b) => a - b));
+  const allOn = shown.length && shown.every(i => pick.includes(i));
+  const go = async idx => { if (busy || !idx.length) return; setBusy(true); try { await gdDownload(kind, idx.map(i => items[i])); ltsdToast(idx.length === 1 ? 'Downloaded. Check your downloads folder.' : idx.length + ' in one zip. Check your downloads folder.'); } finally { setBusy(false); } };
+  return ReactDOM.createPortal(
+    <div className="scrim" onClick={onClose}>
+      <div className="dlp" role="dialog" aria-modal="true" aria-label={'Choose ' + title} onClick={e => e.stopPropagation()}>
+        <div className="dlp-top">
+          <div className="between lbl"><span className="blue">{title + ' · ' + items.length}</span><button type="button" className="chip" style={{ padding: '6px 12px', fontSize: 13 }} onClick={onClose}>Close</button></div>
+          <div className="hl" style={{ fontSize: 'clamp(30px, 3vw, 44px)' }}>{head}</div>
+          <div className="dlp-bar">
+            <input className="field dlp-q" type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Find a word" aria-label="Find a word" />
+            {grps.length > 1 && <div className="row" style={{ gap: 6 }}>{[['all', 'All'], ...grps.map(x => [x, x])].map(([k, l]) => <button key={k} type="button" className={'chip' + (g === k ? ' on' : '')} onClick={() => setG(k)}>{l}</button>)}</div>}
+            <button type="button" className="btn line sm" onClick={() => setPick(p => allOn ? p.filter(i => !shown.includes(i)) : [...new Set([...p, ...shown])].sort((a, b) => a - b))}>{allOn ? 'Clear these' : 'Select all these'}</button>
+            <button type="button" className="btn primary sm" disabled={!pick.length || busy} onClick={() => go(pick)}>{busy ? 'Packing…' : pick.length ? '[ Download ' + pick.length + ' ]' : 'Tap to choose'}</button>
+          </div>
+        </div>
+        {kind === 'walls' && <span className="lbl muted dlp-note">Set it as both lock and home screen. Choose ‘fill’ if your phone asks.</span>}
+        <div className="dlp-grid gd-grid">{!shown.length && <span className="lbl muted">No such word. Yet. Submit it.</span>}{shown.map(i => { const ph = items[i].h / items[i].w > 2; const img = thumbs[i] ? <img src={thumbs[i]} alt="" style={{ aspectRatio: items[i].w + '/' + items[i].h }} /> : <span className="dlp-wait" style={{ aspectRatio: items[i].w + '/' + items[i].h }}></span>; return <button key={i} type="button" className={'dlp-i' + (pick.includes(i) ? ' on' : '')} aria-pressed={pick.includes(i)} onClick={() => tog(i)}>{ph ? <span className="dlp-phone">{img}<b className={'dlp-clock' + (items[i].light ? ' ink' : '')}>9:41</b></span> : img}<MetaFit className="dlp-l" text={items[i].label} min={9} /><i aria-hidden="true">✓</i></button>; })}</div>
+      </div>
+    </div>, document.body
+  );
+}
+function useGdThumbs() {
+  const [t, setT] = React.useState(null), [logo, setLogo] = React.useState(null);
+  React.useEffect(() => {
+    let live = true; const im = new Image();
+    const go = ok => dlFonts().then(() => { if (!live) return; const lg = ok ? im : null; setLogo(lg); const j = c => c.toDataURL('image/jpeg', 0.88);
+      const cov = EXILE.find(x => x.id === 'x-wall'), lock = EXILE.find(x => x.id === 'lock-braai');
+      setT({ walls: [j(dlWall('Aweh', 'orange', 0.12)), j(dlWall('Aweh', 'paper', 0.12)), j(exRender(lock, lg, 0.11))], covers: [j(exRender(cov, lg, 0.24))], meet: [j(dlTeams('k-camera', lg, 0.1)), j(dlTeams('mute', lg, 0.1))], stickers: ['Aweh', 'Shap shap', 'Vy'].map(w => dlSticker(w, 320).toDataURL('image/png')) }); });
+    im.onload = () => go(true); im.onerror = () => go(false); im.src = LSD_RES(window.LSD_ASSETS + 'logos/gateway-logo.png');
+    return () => { live = false; };
+  }, []);
+  return { t, logo };
+}
+const GD_FUN = [
+  { k: 'walls', t: 'Wallpapers', m: 'Phone + desktop · ' + (DL_WALLS.length + DL_WALL_WORDS.length + EXILE.filter(x => ['lock', 'deskslogan', 'desk'].includes(x.g)).length), d: 'All 50 words for your lock screen, in orange or the reverse. Plus home screens and desktops.', choose: 'Pick your words.', btn: 'Download all · zip' },
+  { k: 'meet', t: 'Meeting backgrounds', m: 'Teams + Zoom · ' + (DL_TEAMS.length + EXILE.filter(x => x.g === 'meet').length), d: 'For your last meetings before leave. Look checked out, beautifully.', choose: 'Pick your excuse.', btn: 'Download all · zip' },
+  { k: 'stickers', t: 'WhatsApp stickers', m: 'Hi-res · 2048 px · 50', d: 'All 50 words as stickers, hi-res with see-through backgrounds. Your sticker app does the rest.', btn: 'Download · zip' },
+  { k: 'aunties', t: 'Aunties Against Everyone', m: 'Print deck · 291 cards', d: 'The home edition. Worst answer wins. Print, cut, argue.', btn: 'Print the deck', href: '#study/aunties/print' },
+  { k: 'countdown', t: 'The tear-off countdown', m: 'A4 · a page per week', d: 'One day off at a time, right next to the kettle. Colleagues will ask. Tell them.', btn: '[ Print it ]', href: '#study/office/countdown' },
+  { k: 'door', t: 'The door sign & desk flag', m: 'A4 · two pages', d: 'For the notice period. Gone to chow, back shap shap. Your desk agrees.', btn: '[ Print the set ]', href: '#study/office/door' },
+  { k: 'syllabus', t: 'Word-a-day calendar', m: 'Syllabus.ics · 50 days', d: 'A word a day, in your calendar. 50 days, one syllabus, no excuses. Starts tomorrow.', btn: '[ Add to calendar ]' },
+  { k: 'playlist', t: 'The road trip playlist', m: 'Six hours of N3', d: 'Gqom and yano for the drive. By Harrismith you’ll stop asking “are we there yet.”' },
+];
+const GD_COURSE = [
+  { k: 'dict', t: 'The Dictionary', m: 'Printable · 52 entries', d: 'Every word, every example line. Print it for the flight.', btn: 'Print it', href: '#dictionary', print: true },
+  { k: 'radio', t: 'Radio lessons', m: 'MP3 · ' + Object.keys(window.LSD_AUDIO || {}).length + ' clips', d: 'Every word said properly, by locals. For the flight in.', btn: 'Download · zip' },
+  { k: 'flash', t: 'Flashcards', m: '50 cards', d: 'Flip, guess, be honest. Test the person in seat 14B.', btn: 'Open', href: '#flashcards' },
+  { k: 'ja', t: 'Ja / No Laka', m: 'The true-false game', d: 'No laka still means yes at altitude.', btn: 'Play', href: '#activities/game-03' },
+  { k: 'n3', t: 'The N3 Syllabus', m: 'Printable · A4', d: 'Learn by landmark, Joburg to the tollgate arches. Passenger seat only.', btn: 'Print', href: '#study/n3' },
+];
+function GdPreview({ k, t }) {
+  const im = (src, cls) => src ? <img className={cls} src={src} alt="" draggable="false" /> : <span className={cls + ' gd-wait'}></span>;
+  if (k === 'walls') return <div className="gd-pv">{[0, 1, 2].map(i => <React.Fragment key={i}>{im(t && t.walls[i], 'gd-ph')}</React.Fragment>)}</div>;
+  if (k === 'covers') return <div className="gd-pv">{im(t && t.covers[0], 'gd-cv')}</div>;
+  if (k === 'meet') return <div className="gd-pv">{[0, 1].map(i => <React.Fragment key={i}>{im(t && t.meet[i], 'gd-tm')}</React.Fragment>)}</div>;
+  if (k === 'stickers') return <div className="gd-pv">{[0, 1, 2].map(i => <React.Fragment key={i}>{im(t && t.stickers[i], 'gd-st')}</React.Fragment>)}</div>;
+  if (k === 'aunties') return <div className="gv"><span className="gv-aa p">The auntie saw <i></i> and said “no laka.”</span><span className="gv-aa a">Socks with slops</span></div>;
+  if (k === 'sig') return <div className="gd-pv"><div className="gd-sig">{gdSigLines().map((l, i) => <div key={i}>{i === 3 ? <>Vy date: <Sel handles={false}>15 Dezemba.</Sel></> : l}</div>)}</div></div>;
+  if (k === 'countdown') { const now = lsdNow(), y = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear(), n = Math.max(0, Math.ceil((new Date(y, 11, 1) - now) / 864e5)); return <div className="gd-pv gd-ty"><span className="hl gd-big">{n}</span><span className="lbl blue">Days until Dezemba · tear one off</span></div>; }
+  if (k === 'door') return <div className="gd-pv gd-ty"><span className="hl">Gone to <Sel handles={false}>chow.</Sel></span><span className="lbl blue">Back shap shap</span></div>;
+  if (k === 'syllabus') { const L = window.LSD2.lessons, t1 = lsdNow(); t1.setDate(t1.getDate() + 1); const y = t1.getFullYear(), m = t1.getMonth(), first = (new Date(y, m, 1).getDay() + 6) % 7, n = new Date(y, m + 1, 0).getDate(), d = t1.getDate(), all = [...Array(first).fill(0), ...Array.from({ length: n }, (_, i) => i + 1)], at = all.indexOf(d), row = Math.floor(at / 7), cells = all.slice(row * 7, row * 7 + 14);
+    // Two weeks: the week Lesson 01 lands in, and the next.
+    return <div className="gd-pv"><div className="gd-month"><div className="gd-mh"><b>{t1.toLocaleDateString('en-ZA', { month: 'long' })}</b><span>{y}</span></div><div className="gd-mg">{['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x, i) => <i key={'h' + i}>{x}</i>)}{cells.map((x, i) => <span key={i} className={x === d ? 'on' : x === d + 1 ? 'nx' : ''}>{x ? <><b>{x}</b>{x === d ? <em>{L[0].w + '.'}</em> : x === d + 1 ? <em>{L[1].w + '.'}</em> : null}</> : null}</span>)}</div></div></div>; }
+  if (k === 'playlist') return <div className="gd-pv"><div className="gd-mp3"><div className="gd-mp3-s"><b>Gqom. Yano.</b><span>Six hours of N3 ▸</span></div><div className="gd-mp3-w"><i></i></div></div></div>;
+  if (k === 'dict') return <div className="gd-pv"><div className="gd-book"><div><b>Aweh</b><i>(interj.)</i><s></s><s></s><s className="h"></s><b>Baggies</b><i>(n.)</i><s></s><s className="h"></s></div><div><b>Bru</b><i>(n.)</i><s></s><s className="h"></s><b>Bunny</b><i>(n.)</i><s></s><s></s><s className="h"></s></div></div></div>;
+  if (k === 'radio') return <div className="gd-pv"><div className="gd-tape"><span className="gd-tape-l">031FM · Side A</span><span className="gd-tape-w"><i></i><b></b><i></i></span><span className="gd-tape-n">Lessons 01–50</span></div></div>;
+  if (k === 'flash') return <div className="gd-pv"><div className="gd-fan"><span className="b">cool.</span><span className="f"><Sel handles={false}>Kiff</Sel></span></div></div>;
+  if (k === 'exam') return <div className="gd-pv"><div className="gd-paper"><span className="lbl">Final examination</span><b>Paper 1.</b><s></s><s></s><s className="h"></s><span className="gd-plane">✈ Flight mode</span></div></div>;
+  if (k === 'ja') return <div className="gd-pv"><span className="gd-chip">Ja</span><span className="gd-chip on">No laka</span></div>;
+  if (k === 'n3') return <div className="gd-pv"><div className="gd-road"><span className="gd-n3">N3</span><span>Joburg <em>→</em> <b>Durban</b></span></div></div>;
+  const ty = { dict: ['A–Z', <><Sel handles={false}>Aweh</Sel> (interj.)</>], radio: ['031FM · said by locals', <>Hear <Sel handles={false}>it.</Sel></>], flash: ['Front · back', <>Kiff → <Sel handles={false}>cool.</Sel></>], exam: ['Paper 1 · 100 marks', <>Pens <Sel handles={false}>down.</Sel></>], ja: ['45 seconds', <><Sel handles={false}>No laka</Sel> = yes.</>], n3: ['KM 0 → 545', <>Harrismith: <Sel handles={false}>pie.</Sel></>] }[k];
+  return <div className="gd-pv gd-ty"><span className="lbl blue">{ty[0]}</span><span className="hl">{ty[1]}</span></div>;
+}
+function gdSigLines() { let n = '', no = null; try { n = JSON.parse(localStorage.getItem(lsdKey('lsd2-name'))) || ''; no = JSON.parse(localStorage.getItem(lsdKey('lsd2-cardno'))); } catch (e) {} return ['— ' + ((safeText(n) || '').trim() || '[Name]') + '.', 'Student #' + (no ? String(no).slice(-5) : '04412') + ', Learn to Speak Durban.', 'Fluency: pending.', 'Vy date: 15 Dezemba.']; }
+const gdCopySig = () => ltsdCopy(gdSigLines().join('\n')).then(ok => ltsdToast(ok ? 'Signature copied. Paste it under every email until January.' : 'The clipboard said no. Select it and copy, ekse.'));
+function StudyHub() {
+  const { t, logo } = useGdThumbs();
+  const [pick, setPick] = React.useState(null); // a GD_FUN item with a chooser
+  const [busy, setBusy] = React.useState(null);
+  const run = async (k, fn) => { if (busy) return; setBusy(k); try { await fn(); } finally { setBusy(null); } };
+  const act = g => {
+    if (g.k === 'stickers') return run(g.k, async () => { await dlFonts(); await dlStickerZip(); ltsdToast('Both packs, one zip. Check your downloads folder.'); });
+    if (g.k === 'radio') return run(g.k, async () => { await gdAudioZip(); });
+    if (g.k === 'sig') return gdCopySig();
+    if (g.k === 'syllabus') { gdSyllabusIcs(); ltsdToast('Syllabus.ics downloaded. Open it. Lesson 01 lands tomorrow at 08:00.'); return; }
+    if (['walls', 'covers', 'meet'].includes(g.k)) return run(g.k, async () => { await gdDownload(g.k, gdSet(g.k, logo)); ltsdToast('All of them, one zip. Check your downloads folder.'); });
+  };
+  const card = g => {
+    const chooser = ['walls', 'covers', 'meet'].includes(g.k);
+    const btn = g.k === 'playlist' ? <><a className="btn line sm" href={PLAYLIST_URL} target="_blank" rel="noopener">Spotify</a><a className="btn line sm" href={APPLE_MUSIC_URL} target="_blank" rel="noopener">Apple Music</a></>
+      : g.href ? <a className="btn line sm" href={g.href} onClick={g.print ? () => setTimeout(() => window.print(), 900) : undefined}>{g.btn}</a>
+      : <button type="button" className="btn line sm" disabled={busy === g.k} onClick={e => { e.stopPropagation(); act(g); }}>{busy === g.k ? 'Packing…' : g.btn}</button>;
+    return (
+      <div key={g.k} className={'card game-tile gd-c' + (chooser ? ' pick' : '')} onClick={chooser ? () => setPick(g) : undefined} role={chooser ? 'button' : undefined} tabIndex={chooser ? 0 : undefined} onKeyDown={chooser ? e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setPick(g); } } : undefined}>
+        <div className="game-prev"><GdPreview k={g.k} t={t} /></div>
+        <div className="game-body">
+          <div className="lbl gd-meta"><MetaFit className="muted" text={g.m + (chooser ? ' · Tap to choose' : '')} /></div>
+          <Fit as="h3" className="hl" lines={2} min={20}>{g.t}</Fit>
+          <p>{g.d}</p>
+          <div className="game-cta" onClick={e => e.stopPropagation()}>{btn}</div>
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div>
+      <PageHead index="08" kicker="Works offline" title="The Study Pack.">
+        <p className="lead" style={{ margin: 0 }}>Goodies, in school language. Wallpapers, stickers, the dictionary, the radio lessons. All free.</p>
+        <p className="lead" style={{ margin: 0 }}>For when you’re flying in. Download the course before take-off. The lessons work in flight mode. The ocean does not.</p>
+      </PageHead>
+      <section className="pk-grp">
+        <h2 className="hl pk-h">The fun <Sel>stuff.</Sel></h2>
+        <div className="games gd-grid-c">{GD_FUN.map(card)}</div>
+      </section>
+      <section className="pk-grp">
+        <h2 className="hl pk-h">The course, <Sel>to go.</Sel></h2>
+        <div className="games gd-grid-c">{GD_COURSE.map(card)}</div>
+      </section>
+      {pick && <GoodiesPicker kind={pick.k} title={pick.t} head={pick.choose} logo={logo} onClose={() => setPick(null)} />}
+      <div className="lbl muted" style={{ marginTop: 28 }}>Seatbelt sign: on · Wi-Fi: optional · Fluency: continuing</div>
+    </div>
+  );
+}
+
+function SubmitScreen() {
+  const blank = { word: '', where: '', meaning: '', example: '', name: '', email: '', real: false };
+  const [f, setF] = React.useState(blank);
+  const [err, setErr] = React.useState({});
+  const [done, setDone] = React.useState(null);
+  const form = React.useRef(null);
+  const set = k => e => { const v = k === 'real' ? e.target.checked : e.target.value; setF(x => ({ ...x, [k]: v })); if (err[k]) setErr(x => ({ ...x, [k]: null })); };
+  const submit = e => {
+    e.preventDefault(); const x = {};
+    if (!f.word.trim()) x.word = 'A word is required. It is in the name.';
+    if (!f.where.trim()) x.where = 'Gateway needs a crime scene.';
+    if (!f.meaning.trim()) x.meaning = 'Explain yourself.';
+    if (!f.example.trim()) x.example = 'One sentence. You can do it.';
+    if (!f.name.trim()) x.name = 'For the credits. Required.';
+    if (!f.email.trim()) x.email = 'Gateway needs this.'; else if (!/^\S+@\S+\.\S+$/.test(f.email)) x.email = 'That looks like a vaalie typed it.';
+    if (!f.real) x.real = 'Gateway checks.';
+    // Submit a word is Mode B (strict). Entries are never displayed publicly; they are stored for review only.
+    // PRODUCTION: route all free text through a server-side moderation API (e.g. OpenAI Moderation / Azure AI Content Safety) PLUS this custom SA wordlist before rendering. Client-side filtering is a placeholder and must not ship as the only defence. Shareable text and Submit a word entries should also be human-reviewed where feasible.
+    ['where', 'meaning', 'example', 'email'].forEach(q => { if (f[q] && lsdBlocked(f[q])) x[q] = 'Not that word, bru.'; });
+    // The word and the name go through the name filter (allowlisted campaign words always pass).
+    ['word', 'name'].forEach(q => { if (f[q] && !ltsdNameOk(f[q])) x[q] = LTSD_NAME_NO; });
+    setErr(x); if (Object.keys(x).length) { const k = ['word', 'name'].find(q => x[q] === LTSD_NAME_NO); if (k && form.current) { const el = form.current.querySelector('[name="' + k + '"]'); if (el) el.focus(); } return; }
+    try { const q = JSON.parse(localStorage.getItem('lsd2-submissions') || '[]'); q.push({ ...f, at: new Date().toISOString(), status: 'pending review' }); localStorage.setItem('lsd2-submissions', JSON.stringify(q)); } catch (e2) {}
+    setDone({ ref: 'LTSD-SUB-' + String(300 + Math.floor(Math.random() * 700)).padStart(4, '0'), word: f.word.trim() });
+  };
+  const nameish = k => k === 'word' || k === 'name';
+  const F = (k, label, ph, multi) => (
+    <label className="ctl"><span className={'lbl ' + (err[k] ? 'blue' : 'muted')}>{label}{err[k] ? ' · ' + err[k] : ''}</span>
+      {multi ? <textarea className="field" rows={multi} value={f[k]} onChange={set(k)} placeholder={ph} style={{ resize: 'vertical' }}></textarea> : <input className="field" name={k} type={k === 'email' ? 'email' : 'text'} value={f[k]} onChange={set(k)} placeholder={ph} {...(nameish(k) ? { maxLength: LTSD_NAME_MAX, onBlur: ltsdNameBlur(k, setErr) } : {})} />}
+    </label>
+  );
+  const steps = [['Filed', 'With a submission number.'], ['Gateway checks', 'By Gateway, to Gateway.'], ['Field-tested', 'Said to a lifeguard. Reaction noted.'], ['Added to the Dictionary', 'Or returned with a polite note.']];
+  return (
+    <div>
+      <PageHead index="09" kicker="Form W-05 · Review: 4 steps" title="Submit a word">
+        <p className="lead" style={{ margin: 0 }}>The syllabus holds 50 words. The coast holds more. Send yours to Gateway for review.</p>
+      </PageHead>
+      <div className="sub">
+        {done ? (
+          <div className="card sub-form" style={{ justifyContent: 'center' }}>
+            <span className="lbl blue">{done.ref}</span>
+            <div className="hl" style={{ fontSize: 'clamp(48px, 6vw, 96px)' }}><Sel>{done.word}</Sel></div>
+            <div className="hl" style={{ fontSize: 40 }}>Filed for review.</div>
+            <p className="lead" style={{ margin: 0 }}>If it checks out, the intern files it. Eventually.</p>
+            <div className="row"><button type="button" className="btn primary" onClick={() => { setF(blank); setDone(null); }}>Submit another</button><a className="btn line" href="#dictionary">Back to the Dictionary</a></div>
+          </div>
+        ) : (
+          <form ref={form} className="card sub-form" onSubmit={submit} noValidate>
+            <div className="g2">{F('word', 'The word', 'One word or phrase')}{F('where', 'Where you heard it', 'e.g. North Beach, the taxi rank, my gran')}</div>
+            {F('meaning', 'What it means', 'Explain it like you would to a vaalie.', 3)}
+            {F('example', 'Use it in a sentence', 'Say it like a local would.', 2)}
+            <div className="g2">{F('name', 'Your name', 'For the credits')}{F('email', 'Email address', 'you@example.co.za')}</div>
+            <label className={'tick' + (err.real ? ' err' : '')}><input type="checkbox" checked={f.real} onChange={set('real')} /><span>I confirm this word is real and someone in Durban actually says it.{err.real && <b className="blue"> {err.real}</b>}</span></label>
+            <div className="between" style={{ flexWrap: 'wrap' }}><span className="lbl muted">Every field is required. One word per form. If it checks out, the intern files it. Eventually.</span><div className="row"><button type="button" className="btn line sm" onClick={() => { setF(blank); setErr({}); }}>Clear</button><button type="submit" className="btn primary">[ Send to Gateway ]</button></div></div>
+          </form>
+        )}
+        <div className="sub-steps">
+          <span className="lbl muted">What happens next</span>
+          {steps.map(([t, d], i) => <div key={t} className="card step"><span className="lbl blue">{pad2(i + 1)}</span><div><b>{t}</b><div className="muted">{d}</div></div></div>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { StudyScreen, SubmitScreen, GdPreview });

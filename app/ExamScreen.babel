@@ -1,0 +1,322 @@
+// Exam unlock date (local midnight). Change this one line to move it. Month is 0-based: 11 = December.
+const EXAM_UNLOCK = new Date(2026, 11, 1);
+// THE PAPER: 100 questions, 100 marks (one each), seven sections, one sitting. Pass = 50. Pools: exam-paper.js.
+const EXAM_N = 100, EXAM_PASS = 50;
+const XP_SECS = [
+  { id: 'A', k: 'mc', t: 'Multiple choice', n: 25, ins: ['Choose the correct answer. One per question.', 'Guessing is permitted. It is also visible.'] },
+  { id: 'B', k: 'tf', t: 'One time or Voes’ek', n: 15, ins: ['Absolutely true? Tap One time. Absolutely not? Tap Voes’ek.', 'There is no “sort of”. This is Durban.'] },
+  { id: 'C', k: 'match', t: 'Match the columns', n: 10, ins: ['Tap a word in Column A, then its meaning in Column B.', 'Tap a pair again to undo it. One mark per correct pair.'] },
+  { id: 'D', k: 'gap', t: 'Fill the gap', n: 15, ins: ['Tap the word that belongs in the gap.', 'Spelling is not assessed. Neither is your accent.'] },
+  { id: 'E', k: 'tr', t: 'The translation', n: 10, ins: ['Each sentence arrived from inland. Choose the correct coastal translation.', 'Only one is right. The other two are what Joburg sends.'] },
+  { id: 'F', k: 'build', t: 'Construct the sentence', n: 10, ins: ['Tap the words in the right order. Tap a placed word to send it back.', 'The full sentence or nothing. Durban doesn’t do half a sentence.'] },
+  { id: 'G', k: 'odd', t: 'The odd one out', n: 15, ins: ['Four words. One doesn’t belong. Tap it.', 'One tap and it’s handed in. The examiner explains himself afterwards.'] },
+];
+const XP_LET = 'abcdefghij';
+const xpShuf = a => { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+const xpOrder = a => xpShuf(a.map((_, i) => i));
+const XP_ORD = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth', 'Ninth', 'Tenth'];
+const xpOrd = n => XP_ORD[n - 1] || n + 'th';
+const xpSitLine = n => n === 2 ? 'Second sitting. The first one is on record.' : n === 3 ? 'Third sitting. The invigilator knows your name now.' : xpOrd(n) + ' sitting. The invigilator has brought snacks.';
+// Results from the old 50-question exam were out of 50: rescale once so profiles and the fluency ladder read out of 100.
+try { const k = lsdKey('lsd2-exam'), v = JSON.parse(localStorage.getItem(k)); if (v && !v.of) localStorage.setItem(k, JSON.stringify({ ...v, best: Math.min(100, (v.best || 0) * 2), last: Math.min(100, (v.last || 0) * 2), of: 100 })); } catch (e) {}
+const xpSittings = rec => rec ? (rec.sittings || (rec.last != null ? 1 : 0)) : 0;
+
+// One sitting = one freshly drawn paper. No word is tested more than twice (cap), the least-tested words are drawn first,
+// Section C absorbs whatever is left, and no two consecutive questions test the same word.
+function xpDraw(cap) {
+  const X = window.LSD_EXAM, L = window.LSD2.lessons, cnt = {};
+  const c = w => w ? (cnt[w] || 0) : 0, use = w => { if (w) cnt[w] = c(w) + 1; };
+  const fixed = X.gap.filter(g => g.fixed); fixed.forEach(q => use(q.w));
+  const take = (pool, n, seed = []) => {
+    const out = [...seed], p = xpShuf(pool.filter(q => !seed.includes(q)));
+    while (out.length < n) { let best = null, bc = 99; for (const q of p) { if (out.includes(q)) continue; const k = q.w ? c(q.w) : 1; if (k < cap && k < bc) { best = q; bc = k; if (k === 0) break; } } if (!best) return null; out.push(best); use(best.w); }
+    return out;
+  };
+  const tf = X.tf.map(([w, q, t]) => ({ w, q, t }));
+  const E = take(X.tr, 10), F = E && take(X.build, 10), G = F && take(X.odd, 15), D = G && take(X.gap, 15, fixed), B = D && take(tf, 15), A = B && take(X.mc, 25);
+  if (!A) return null;
+  const grp = new Set(), C = [];
+  for (const l of xpShuf(L).sort((a, b) => c(a.n) - c(b.n))) { if (!X.short[l.n] || c(l.n) >= cap) continue; const g = X.group[l.n] || l.n; if (grp.has(g)) continue; grp.add(g); C.push(l); use(l.n); if (C.length === 10) break; }
+  if (C.length < 10) return null;
+  return { A, B, C, D, E, F, G };
+}
+function xpBuild() {
+  let d = null; for (let t = 0; t < 80 && !d; t++) d = xpDraw(2);
+  for (let t = 0; t < 40 && !d; t++) d = xpDraw(3);
+  const opts = (q, a, right) => { const o = xpOrder(a); return { q, a: o.map(i => a[i]), c: o.indexOf(right) }; };
+  let prev = null;
+  const spread = arr => { let a = arr; for (let t = 0; t < 40; t++) { a = xpShuf(arr); if (a.every((q, i) => !q.w || q.w !== (i ? a[i - 1].w : prev))) break; } prev = a[a.length - 1].w; return a; };
+  const left = d.C.map(l => ({ w: l.w, n: l.n, d: window.LSD_EXAM.short[l.n] }));
+  return [
+    spread(d.A).map(q => ({ k: 'mc', w: q.w, ...opts(q.q, q.a, 0) })),
+    spread(d.B).map(q => ({ k: 'tf', w: q.w, q: q.q, c: q.t })),
+    (prev = null, [{ k: 'match', left, right: xpOrder(left) }]),
+    spread(d.D).map(g => ({ k: 'gap', w: g.w, ...opts(g.q, g.a, 0) })),
+    spread(d.E).map(t => ({ k: 'tr', w: t.w, ...opts(t.q, t.a, 0) })),
+    spread(d.F).map(p => { let o; do { o = xpOrder(p.p); } while (o.every((v, i) => v === i)); return { k: 'build', w: p.w, parts: p.p, bank: o }; }),
+    spread(d.G).map(g => ({ k: 'odd', w: g.w, why: g.why, ...opts('', g.o, 0) })),
+  ];
+}
+function xpMark(it, r) {
+  if (r == null) return 0;
+  if (it.k === 'match') return it.left.reduce((t, _, i) => t + (r[i] != null && it.right[r[i]] === i ? 1 : 0), 0);
+  if (it.k === 'build') return r.length === it.parts.length && r.every((v, i) => v === i) ? 1 : 0;
+  return r === it.c ? 1 : 0;
+}
+const xpMarks = (paper, resp) => XP_SECS.map((x, si) => paper[si].reduce((t, it, ii) => t + xpMark(it, resp[si] && resp[si][ii]), 0));
+const xpGrade = t => t >= 80 ? ['Distinction', 'Practically local.'] : t >= 60 ? ['Passed', 'The water will forgive the rest.'] : t >= 50 ? ['Passed', 'Barely. The aunties noticed.'] : ['No laka', 'Which, yes, means lekker — but not for you. Revise and return; the ocean isn’t going anywhere.'];
+const xpDate = d => (d ? new Date(d) : lsdNow()).toLocaleDateString('en-ZA', { day: 'numeric', month: 'long', year: 'numeric' }).replace('December', 'Dezemba');
+const TF_LBL = [[true, 'One time'], [false, 'Voes’ek']];
+
+const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+const cdText = cd => plural(cd.days, 'day') + ', ' + plural(cd.h, 'hour') + ' and ' + plural(cd.m, 'minute');
+
+function XpQuestion({ it, cur, setCur }) {
+  const [sel, setSel] = React.useState(null);
+  if (it.k === 'mc' || it.k === 'tr') return <>
+    {it.k === 'tr' ? <><span className="lbl muted">Received from inland</span><div className="ex-q" style={{ marginTop: 8 }}>“{it.q}”</div><span className="lbl muted" style={{ marginBottom: 12 }}>The coastal translation is:</span></> : <div className="ex-q">{it.q}</div>}
+    <div className="ex-ans">{it.a.map((a, k) => <button key={k} type="button" className={'ans' + (cur === k ? ' on' : '')} onClick={() => setCur(k)}><span className="k">{XP_LET[k]}</span><span>{a}</span></button>)}</div>
+  </>;
+  if (it.k === 'tf') return <>
+    <div className="ex-q">{it.q}</div>
+    <div className="xp-lk">{TF_LBL.map(([v, l]) => <button key={l} type="button" className={'ans' + (cur === v ? ' on' : '')} onClick={() => setCur(v)}>{l}</button>)}</div>
+  </>;
+  if (it.k === 'odd') { const locked = cur != null; return <>
+    <div className="ex-q">Which one doesn’t belong?</div>
+    <div className="xp-odd">{it.a.map((w, k) => <button key={k} type="button" disabled={locked} className={'xp-chip' + (cur === k ? ' on' : '') + (locked && k === it.c ? ' right' : '')} onClick={() => setCur(k)}>{w}</button>)}</div>
+    {locked && <div className="xp-why"><span className="lbl blue">{cur === it.c ? 'Correct · 1 mark' : 'Not quite · 0 marks'}</span><span>{it.why}</span></div>}
+  </>; }
+  if (it.k === 'gap') { const [a, b] = it.q.split('____'); return <>
+    <div className="ex-q">{a}<span className={'xp-gap' + (cur != null ? ' f' : '')}>{cur != null ? it.a[cur] : '\u00a0'}</span>{b}</div>
+    <div className="xp-chips">{it.a.map((w, k) => <button key={k} type="button" className={'xp-chip' + (cur === k ? ' on' : '')} onClick={() => setCur(cur === k ? null : k)}>{w}</button>)}</div>
+  </>; }
+  if (it.k === 'build') { const placed = cur || []; return <>
+    <div className="ex-q">Put it in order.</div>
+    <div className="xp-line">{placed.length ? placed.map(pi => <button key={pi} type="button" className="xp-chip on" onClick={() => setCur(placed.filter(x => x !== pi))}>{it.parts[pi]}</button>) : <span className="lbl muted">Your sentence goes here</span>}</div>
+    <div className="xp-chips">{it.bank.filter(pi => !placed.includes(pi)).map(pi => <button key={pi} type="button" className="xp-chip" onClick={() => setCur([...placed, pi])}>{it.parts[pi]}</button>)}</div>
+  </>; }
+  // match: cur[leftIndex] = position in Column B
+  const m = cur || it.left.map(() => null);
+  const tapL = li => { if (m[li] != null) { const n = [...m]; n[li] = null; setCur(n); setSel(null); } else setSel(sel === li ? null : li); };
+  const tapR = rp => { const owner = m.indexOf(rp); if (sel != null) { const n = [...m]; if (owner > -1) n[owner] = null; n[sel] = rp; setCur(n); setSel(null); } else if (owner > -1) { const n = [...m]; n[owner] = null; setCur(n); } };
+  const done = m.filter(v => v != null).length;
+  return <>
+    <div className="ex-q">Match each word to its meaning.</div>
+    <div className={'xp-m' + (sel != null ? ' armed' : '')}>
+      <div className="xp-mc"><span className="lbl muted">Column A · the word</span>{it.left.map((l, li) => <button key={li} type="button" className={'xp-mi' + (sel === li ? ' sel' : '') + (m[li] != null ? ' pd' : '')} onClick={() => tapL(li)}><span className="xp-n">{li + 1}</span><b>{l.w}</b><span className="xp-b">{m[li] != null ? XP_LET[m[li]] : ''}</span></button>)}</div>
+      <div className="xp-mc"><span className="lbl muted">Column B · the meaning</span>{it.right.map((li, rp) => <button key={rp} type="button" className={'xp-mi r' + (m.includes(rp) ? ' pd' : '')} onClick={() => tapR(rp)}><span className="xp-n">{XP_LET[rp]}</span><span>{it.left[li].d}</span></button>)}</div>
+    </div>
+    <span className="lbl muted" style={{ marginTop: 14, display: 'block' }}>{done + ' / 10 paired' + (sel != null ? ' · now tap its meaning' : '')}</span>
+  </>;
+}
+
+// The memo: every question, your answer, the right one, the mark. Like getting the paper back, minus the red pen.
+function XpMemo({ paper, resp }) {
+  const marks = xpMarks(paper, resp);
+  let q = 0;
+  const row = (key, n, body, yours, memo, mk) => <div key={key} className={'xp-mq' + (mk ? '' : ' x')}><span className="xp-mn">{n}</span><div className="xp-mb">{body}<div className="xp-ma"><span><span className="lbl muted">Yours</span>{yours}</span>{!mk && <span><span className="lbl blue">Memo</span>{memo}</span>}</div></div><span className="xp-mk">{mk ? '1' : '0'}</span></div>;
+  return <div className="xp-memo">
+    {XP_SECS.map((x, si) => <div key={x.id} className="xp-ms">
+      <div className="between lbl"><span className="blue">{'Section ' + x.id + ' · ' + x.t}</span><span>{marks[si] + ' / ' + x.n}</span></div>
+      {paper[si].map((it, ii) => {
+        const r = resp[si] && resp[si][ii];
+        if (it.k === 'match') return it.left.map((l, li) => { q++; const mine = r && r[li] != null ? it.left[it.right[r[li]]].d : '—'; return row(ii + '-' + li, q, <b>{l.w}</b>, mine, l.d, mine === l.d); });
+        q++; const mk = xpMark(it, r) === 1;
+        if (it.k === 'tf') return row(ii, q, <span>{it.q}</span>, r == null ? '—' : r ? 'One time' : 'Voes’ek', it.c ? 'One time' : 'Voes’ek', mk);
+        if (it.k === 'build') return row(ii, q, <span className="muted">Construct the sentence</span>, r ? r.map(i => it.parts[i]).join(' ') : '—', it.parts.join(' '), mk);
+        if (it.k === 'odd') return row(ii, q, <span>{it.a.join(' · ')}<span className="xp-mw">{it.why}</span></span>, r != null ? it.a[r] : '—', it.a[it.c], mk);
+        const body = it.k === 'tr' ? <span>“{it.q}”</span> : <span>{it.q}</span>;
+        return row(ii, q, body, r != null ? it.a[r] : '—', it.a[it.c], mk);
+      })}
+    </div>)}
+  </div>;
+}
+
+function ExamScreen() {
+  const [stage, setStage] = React.useState('intro'); // intro · sec · q · done · memo
+  const [name, setName] = useStored('lsd2-name', '');
+  const nameIn = React.useRef(null);
+  const nameF = useNameField(name, setName, nameIn);
+  useFitInput(nameIn, nameF.value, 20, 12);
+  const me = useProfile();
+  const [cardNo] = useStored('lsd2-cardno', null);
+  const examNo = (me && me.no) || cardNo || null;
+  const [paper, setPaper] = React.useState(null);
+  const [s, setS] = React.useState(0);
+  const [i, setI] = React.useState(0);
+  const [cur, setCur] = React.useState(null);
+  const [resp, setResp] = React.useState([]);
+  const [showMemo, setShowMemo] = React.useState(false);
+  const cd = useCountdown(EXAM_UNLOCK);
+  const [force, setForce] = React.useState(false);
+  const [rec, setRec] = useStored('lsd2-exam', null);
+  const [memo, setMemo] = useStored('lsd2-exam-memo', null);
+  const done = stage === 'done' && paper;
+  const marks = done ? xpMarks(paper, resp) : null;
+  const total = marks ? marks.reduce((a, b) => a + b, 0) : 0;
+  const prevSits = xpSittings(rec);
+  const [sitNo, setSitNo] = React.useState(prevSits + 1);
+  React.useEffect(() => {
+    if (stage !== 'done') return;
+    const at = new Date().toISOString();
+    setRec(b => ({ ...(b || {}), best: Math.max(total, b && b.best || 0), last: total, at, of: 100, sittings: Math.max(sitNo, xpSittings(b)), history: [...((b && b.history) || []).filter(h => h.n !== sitNo), { n: sitNo, at, total }] }));
+    setMemo({ n: sitNo, at, total, marks, paper, resp });
+  }, [stage]);
+  const top = () => window.scrollTo(0, 0);
+  const start = () => { const n = prevSits + 1; setSitNo(n); setRec(b => ({ ...(b || {}), of: 100, sittings: n })); setPaper(xpBuild()); setS(0); setI(0); setCur(null); setResp([]); setShowMemo(false); setStage('sec'); top(); };
+  const sec = XP_SECS[s], it = paper && paper[s] && paper[s][i];
+  const before = XP_SECS.slice(0, s).reduce((t, x) => t + x.n, 0);
+  const ready = it && (it.k === 'match' ? cur && cur.every(v => v != null) : it.k === 'build' ? cur && cur.length === it.parts.length : cur != null);
+  const next = () => {
+    if (!ready) return;
+    setResp(r => { const n = [...r]; n[s] = [...(n[s] || [])]; n[s][i] = cur; return n; });
+    setCur(null);
+    if (i < paper[s].length - 1) setI(i + 1);
+    else if (s < XP_SECS.length - 1) { setS(s + 1); setI(0); setStage('sec'); }
+    else setStage('done');
+    top();
+  };
+  const hist = ((rec && rec.history) || []).slice().sort((a, b) => a.n - b.n);
+
+  if (!cd.open && !force) return (
+    <div className="exam">
+      <PageHead index="05" kicker="The final exam" title="Not yet, ekse." />
+      <div className="card ex-card">
+        <p className="lead" style={{ margin: '0 0 24px' }}>The final exam covers all 50 words and unlocks 1 Dezemba. You have {cdText(cd)} to study. That’s more notice than HR gives you.</p>
+        <div className="row"><a className="btn primary" href="#lessons/01">Revise the lessons</a>{/* DEV ONLY: this button skips the 1 Dezemba lock for testing. DELETE IT (and the "force" state) BEFORE PRODUCTION. */}
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 6 }}><button type="button" className="btn line" onClick={() => setForce(true)}>Sit it anyway (testing)</button><span className="lbl" style={{ color: '#c0392b' }}>Testing only · remove before launch</span></span></div>
+      </div>
+    </div>
+  );
+
+  if (stage === 'memo' && memo) return (
+    <div className="exam">
+      <div className="card xp-rep">
+        <div className="between lbl" style={{ flexWrap: 'wrap' }}><span className="blue">{'Memorandum · Paper 1 · Sitting ' + memo.n}</span><span className="muted">{xpDate(memo.at) + ' · ' + memo.total + ' / 100'}</span></div>
+        <div className="hl xp-sh" style={{ margin: 0 }}>The <Sel>memo.</Sel></div>
+        <p className="lead" style={{ margin: 0 }}>Every question, your answer, and the right one where they differ. Marked by Gateway. Not open to dispute.</p>
+        <XpMemo paper={memo.paper} resp={memo.resp} />
+      </div>
+      <div className="row" style={{ justifyContent: 'center', marginTop: 24 }}><button type="button" className="btn primary" onClick={() => { setStage('intro'); top(); }}>Back to the cover</button></div>
+    </div>
+  );
+
+  if (stage === 'intro') { const nextSit = prevSits + 1; return (
+    <div className="exam">
+      <div className="card xp-cover">
+        <div className="xp-frame">
+          <span className="lbl blue">Learn to Speak Durban — Final examination</span>
+          <h1 className="hl xp-h">Paper 1.</h1>
+          <span className="lbl">(There is no Paper 2) · 100 questions · 100 marks · One sitting</span>
+          {nextSit > 1 && <span className="lbl xp-stamp">{xpSitLine(nextSit)}</span>}
+          <div className="xp-meta">
+            <div><span className="lbl muted">Exam number</span><b>{examNo || 'Not issued'}</b>{!examNo && <a className="lbl" href="#card">Get a student card</a>}</div>
+            <div><span className="lbl muted">Date</span><b>{xpDate()}</b></div>
+            <div><span className="lbl muted">Time allowed</span><b>One sitting</b></div>
+            <div><span className="lbl muted">Sitting</span><b>{xpOrd(nextSit)}</b></div>
+          </div>
+          <label className="xp-name"><span className="lbl muted">Candidate name · as it should appear on the certificate</span>
+            <input className="field" style={{ fontSize: 20 }} placeholder="Your name, spelt how your gran spells it" {...nameF.input} />
+            <NameNote f={nameF} />
+          </label>
+        </div>
+        <div className="xp-cols">
+          <div><span className="lbl blue">Instructions and information</span>
+            <ol className="xp-ins"><li>Read every question.</li><li>Answer all of them.</li><li>No dictionaries — you ARE the dictionary now.</li><li>The ocean is open afterwards.</li><li>Seven sections. 100 questions. One mark each. The pass mark is 50.</li><li>Change an answer as often as you like. Once you press Next, it’s handed in. There is no back button. It’s an exam, ekse.</li></ol>
+          </div>
+          <div><span className="lbl blue">This paper</span>
+            <div className="xp-tbl">{XP_SECS.map(x => <div key={x.id} className="xp-tr"><span className="lbl blue">{x.id}</span><span>{x.t}</span><span className="muted">{x.k === 'match' ? '10 pairs' : x.n + ' q'}</span><b>{x.n}</b></div>)}<div className="xp-tr tot"><span></span><span>Total</span><span></span><b>100</b></div></div>
+            {hist.length > 0 && <div className="xp-rec"><span className="lbl muted">On record</span>{hist.map(h => <span key={h.n} className="lbl">{'Sitting ' + h.n + ' · ' + h.total + ' / 100 · ' + xpDate(h.at)}</span>)}{memo && <button type="button" className="btn line sm" onClick={() => { setStage('memo'); top(); }}>{'View the Sitting ' + memo.n + ' memo'}</button>}</div>}
+          </div>
+        </div>
+        <div className="between" style={{ flexWrap: 'wrap' }}><div className="row"><button type="button" className="btn primary" onClick={() => { if (ltsdNamesOk(nameF)) start(); }}>{nextSit > 1 ? '[ Begin sitting ' + nextSit + ' ]' : '[ Begin the exam ]'}</button><a className="btn line" href="#lessons/01">Cram first</a></div><span className="lbl muted">Copyright reserved · Please turn over</span></div>
+      </div>
+    </div>
+  ); }
+
+  const prog = (n, label) => <>
+    <div className="xp-prog"><i style={{ width: n + '%' }}></i></div>
+    <div className="between lbl" style={{ marginTop: 14, flexWrap: 'wrap', rowGap: 4 }}><span className="blue">{label}</span><span className="muted">{'Sitting ' + sitNo + ' · (1 mark each)'}</span></div>
+  </>;
+
+  if (stage === 'sec') return (
+    <div className="exam">
+      <div className="card ex-card">
+        {prog(before, 'Questions ' + (before + 1) + '–' + (before + sec.n) + ' / 100 · Section ' + sec.id)}
+        <div className="hl xp-sh">Section {sec.id}. <Sel>{sec.t}.</Sel></div>
+        <ol className="xp-ins">{sec.ins.map((t, k) => <li key={k}>{t}</li>)}</ol>
+        <div className="between" style={{ marginTop: 32, flexWrap: 'wrap' }}>
+          <span className="lbl muted">{s ? 'Section ' + XP_SECS[s - 1].id + ' is handed in. No going back.' : 'Pens down at the end. Not before.'}</span>
+          <button type="button" className="btn primary" onClick={() => { setStage('q'); top(); }}>{'[ Start Section ' + sec.id + ' ]'}</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (stage === 'q') {
+    const qn = before + i + 1, last = i === paper[s].length - 1;
+    const label = it.k === 'match' ? 'Questions ' + (before + 1) + '–' + (before + 10) + ' / 100 · Section ' + sec.id : 'Question ' + qn + ' / 100 · Section ' + sec.id;
+    return (
+      <div className="exam">
+        <div className="card ex-card">
+          {prog(qn - 1, label)}
+          <XpQuestion key={s + '-' + i} it={it} cur={cur} setCur={setCur} />
+          <div className="between" style={{ marginTop: 28, flexWrap: 'wrap' }}>
+            <span className="lbl muted">{ready ? (it.k === 'odd' ? 'Handed in. Carry on.' : 'Happy? Next hands it in.') : 'Answer it to carry on.'}</span>
+            <button type="button" className="btn primary sm" disabled={!ready} onClick={next}>{!last ? 'Next question' : s < XP_SECS.length - 1 ? 'End of Section ' + sec.id : '[ Hand it in ]'}</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const pass = total >= EXAM_PASS, g = xpGrade(total), cand = safeText(name).trim();
+  const earlier = hist.filter(h => h.n !== sitNo);
+  const report = (
+    <div className="card xp-rep">
+      <div className="between lbl" style={{ flexWrap: 'wrap' }}><span className="blue">Statement of results · LTSD-2026</span><span className="muted">{'Exam no. ' + (examNo || 'not issued') + ' · Sitting ' + sitNo}</span></div>
+      {sitNo > 1 && <span className="lbl xp-stamp">{xpSitLine(sitNo)}</span>}
+      <div className="xp-res">
+        <div className="hl xp-total">{total}<span className="muted">/100</span></div>
+        <div className="xp-g"><span className="lbl xp-stamp">{g[0] + '.'}</span><p className="lead">{g[1]}</p></div>
+      </div>
+      <div className="xp-tbl">
+        <div className="xp-tr lbl muted"><span>Sec.</span><span>Paper 1</span><span>Mark</span><span>Out of</span></div>
+        {XP_SECS.map((x, si) => <div key={x.id} className="xp-tr"><span className="lbl blue">{x.id}</span><span>{x.t}</span><b>{marks[si]}</b><span className="muted">{x.n}</span></div>)}
+        <div className="xp-tr tot"><span></span><span>Total</span><b>{total}</b><span>100</span></div>
+      </div>
+      {earlier.length > 0 && <span className="lbl muted">{'On record: ' + earlier.map(h => 'Sitting ' + h.n + ' · ' + h.total + ' / 100').join(' · ')}</span>}
+      <div className="between" style={{ flexWrap: 'wrap' }}><span className="lbl muted" style={{ whiteSpace: 'normal', minWidth: 0 }}>{'Candidate: ' + (cand || 'unnamed') + ' · Pass mark 50 · ' + xpDate()}</span><button type="button" className={'btn sm ' + (showMemo ? 'soft' : 'line')} onClick={() => setShowMemo(v => !v)}>{showMemo ? 'Hide the memo' : '[ View the memo ]'}</button></div>
+      {showMemo && <XpMemo paper={paper} resp={resp} />}
+    </div>
+  );
+  if (!pass) return (
+    <div className="exam">
+      {report}
+      <div className="row" style={{ justifyContent: 'center', marginTop: 24 }}><button type="button" className="btn primary" onClick={start}>{'[ Sit it again · Sitting ' + (sitNo + 1) + ' ]'}</button><a className="btn line" href="#lessons/01">Study the lessons</a></div>
+    </div>
+  );
+  const certR = { cert: true, name: cand || 'A fluent student', total, grade: g[0], no: examNo, sit: sitNo, kicker: 'Certificate of Fluency' };
+  return (
+    <div className="exam">
+      {report}
+      <div className="card cert">
+        <div className="seal"><div><div className="lbl" style={{ fontSize: 9 }}>Certified</div><div className="hl" style={{ fontSize: 30 }}>Fluent</div><div className="lbl" style={{ fontSize: 9 }}>2026</div></div></div>
+        <div className="lbl blue">Certificate of Fluency · LTSD-2026</div>
+        <div className="lbl muted" style={{ marginTop: 40 }}>This certifies that</div>
+        {/* Certificate name is Mode B (strict). PRODUCTION: route all free text through a server-side moderation API (e.g. OpenAI Moderation / Azure AI Content Safety) PLUS this custom SA wordlist before rendering. Client-side filtering is a placeholder and must not ship as the only defence. Shareable text and Submit a word entries should also be human-reviewed where feasible. */}
+        <Fit as="div" lines={2} min={30} className="hl cert-name">{cand || 'A fluent student'}</Fit>
+        <div className="hl" style={{ fontSize: 'clamp(32px, 4vw, 52px)' }}>speaks <Sel>Durban.</Sel></div>
+        <div className="lbl" style={{ marginTop: 28 }}>{'Mark ' + total + ' / 100 · ' + g[0] + (examNo ? ' · ' + examNo : '') + (sitNo > 1 ? ' · ' + xpOrd(sitNo) + ' sitting' : '') + ' · Redeemable at Gateway, Durban'}</div>
+        <div className="between cert-foot"><span className="lbl">Learn to Speak Durban. A public service by Gateway. <a className="muted" href="#report">Report</a></span><img src={LSD_RES((window.LSD_ASSETS || '../../assets/') + 'logos/gateway-logo.png')} alt="Gateway" style={{ height: 44, width: 'auto' }} /></div>
+        <div className="cert-031">{LTSD_SLUG}</div>
+      </div>
+      <div className="xp-share">
+        <ShareRow id="exam" r={certR} preview={false}><button type="button" className="btn line sm" onClick={() => window.print()}>Print it</button></ShareRow>
+        <button type="button" className="btn line sm" onClick={start}>{'Sit it again · Sitting ' + (sitNo + 1)}</button>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { ExamScreen, EXAM_UNLOCK, EXAM_PASS });

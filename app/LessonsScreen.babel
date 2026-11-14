@@ -1,0 +1,164 @@
+// Bonus entry: Durban itself. Copy is locked in lessons.js (LSD_DURBAN), shared with the playing card. Not in LSD_LESSONS, so the count stays honest.
+const DURBAN_ENTRY = { n: '00', ...window.LSD_DURBAN, map: 'Durban, South Africa', special: true, tag: 'THE SUBJECT · NOT IN THE EXAM', href: '#lessons/durban', keys: 'durban the city 031 durbs' };
+// Campus entry: Gateway. Not one of the 50, not in the exam, flashcards, wordwall or syllabus. The campus, not the curriculum.
+// Its two links are the only external links on any dictionary entry. The school only ever points you to one place.
+const GATEWAY_MAP = 'https://www.google.com/maps/search/?api=1&query=Gateway+Theatre+of+Shopping+Umhlanga', GATEWAY_SITE = 'https://gatewayworld.co.za';
+const GATEWAY_ENTRY = { n: 'gateway', w: 'Gateway', p: 'n., proper', d: 'the campus. Umhlanga, Durban.', e: 'Every course needs a campus. Ours has the ocean up the road and parking for your gran.', campus: true, special: true, tag: 'THE CAMPUS · NOT IN THE EXAM', href: '#lessons/gateway', keys: 'gateway campus mall umhlanga' };
+// Find the campus: opens the map in a pop-up, styled like Durban's Fig. 1 map card. The href stays a real link (new tab) if JS is off.
+function GatewayMapModal({ onClose }) {
+  React.useEffect(() => { const k = e => { if (e.key === 'Escape') onClose(); }; addEventListener('keydown', k); document.documentElement.classList.add('ct-open'); return () => { removeEventListener('keydown', k); document.documentElement.classList.remove('ct-open'); }; }, []);
+  // Portalled to <body>: the dictionary's column layout would otherwise trap a fixed pop-up inside its column.
+  return ReactDOM.createPortal(
+    <div className="scrim" onClick={onClose}>
+      <div className="card ls-map gw-map" role="dialog" aria-modal="true" aria-label="Map of Gateway Theatre of Shopping, Umhlanga" onClick={e => e.stopPropagation()}>
+        <div className="between lbl"><span className="blue">Fig. 2 · Where the campus is</span><button type="button" className="chip" style={{ padding: '6px 12px', fontSize: 13 }} onClick={onClose} autoFocus>Close</button></div>
+        <iframe title="Map of Gateway Theatre of Shopping, Umhlanga" src={'https://maps.google.com/maps?q=' + encodeURIComponent('Gateway Theatre of Shopping, Umhlanga') + '&z=15&output=embed'} loading="lazy" referrerPolicy="no-referrer-when-downgrade"></iframe>
+        <div className="between" style={{ flexWrap: 'wrap' }}><span className="lbl muted">Umhlanga · 29.73° S, 31.07° E · parking for your gran</span><a className="btn line sm" target="_blank" rel="noopener" href={GATEWAY_MAP}>Open in Google Maps →</a></div>
+      </div>
+    </div>, document.body
+  );
+}
+// Map teaser: a small framed map with an orange pin on Gateway. Tapping it (or Find the campus) opens the map pop-up.
+// The tile is a Google embed with no marker of its own (ll, not q), made non-interactive; the pin is ours.
+const GATEWAY_LL = '-29.7274,31.0668';
+function GatewayLinks({ compact }) {
+  const [map, setMap] = React.useState(false);
+  const open = e => { e.preventDefault(); e.stopPropagation(); setMap(true); };
+  return <div className={'gw-links' + (compact ? ' compact' : '')}>
+    <button type="button" className="gw-thumb" onClick={open} aria-label="Open the map of Gateway Theatre of Shopping, Umhlanga"><iframe title="" aria-hidden="true" tabIndex={-1} src={'https://maps.google.com/maps?ll=' + GATEWAY_LL + '&z=14&t=m&output=embed'} loading="lazy" referrerPolicy="no-referrer-when-downgrade"></iframe><span className="gw-pin" aria-hidden="true"></span><span className="gw-tag lbl">The campus · Umhlanga</span></button>
+    <div className="gw-btns"><a className="btn line sm" href={GATEWAY_MAP} target="_blank" rel="noopener" onClick={open}>[ Find the campus ]</a><a className="btn line sm" href={GATEWAY_SITE} target="_blank" rel="noopener">[ gatewayworld.co.za ]</a></div>
+    {map && <GatewayMapModal onClose={() => setMap(false)} />}
+  </div>;
+}
+// Hear it: plays the entry's clip from LSD_AUDIO (see ui.jsx). No clip, no button.
+function HearWord({ l }) {
+  const { has, st } = useSay(l.w);
+  React.useEffect(() => () => { if (LTSD_SAY.slug === ltsdSlug(l.w)) ltsdStop(); }, [l.w]);
+  if (!has) return null;
+  return (
+    <button type="button" className={'hw ' + st} onClick={() => ltsdSay(l.w)} aria-label={st === 'idle' ? 'Hear ' + l.w : 'Stop'}>
+      <span className="hw-b"></span>
+      <span className="hw-t">
+        <b>Hear it</b>
+        <span className="lbl muted">031FM · Said by locals</span>
+      </span>
+      <span className="hw-eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+    </button>
+  );
+}
+
+function LessonsScreen({ sub, go }) {
+  const L = window.LSD2.lessons;
+  const B = window.LSD2.bonus || [];
+  const isDbn = sub === 'durban' || sub === '00', isGw = sub === 'gateway';
+  const bi = B.findIndex(x => x.n === sub), isB = bi > -1;
+  const i = isDbn || isB || isGw ? -1 : Math.max(0, L.findIndex(x => x.n === sub));
+  const l = isGw ? GATEWAY_ENTRY : isDbn ? DURBAN_ENTRY : isB ? B[bi] : L[i];
+  const [q, setQ] = React.useState('');
+  const [done, setDone] = useStored('lsd2-learnt', []);
+  const [shown, setShown] = React.useState(true);
+  const [copied, copy] = useCopy();
+  const say = useSay(l.w);
+  const [said, setSaid] = React.useState(false);
+  React.useEffect(() => { setShown(true); setSaid(false); }, [l.n]);
+  React.useEffect(() => { if (say.st === 'playing') setSaid(true); }, [say.st]);
+  const match = x => (x.w + ' ' + x.d).toLowerCase().includes(q.trim().toLowerCase());
+  const list = L.filter(match), blist = B.filter(match);
+  const dbnMatch = !q.trim() || (DURBAN_ENTRY.w + ' ' + DURBAN_ENTRY.keys).toLowerCase().includes(q.trim().toLowerCase());
+  const gwMatch = !q.trim() || GATEWAY_ENTRY.keys.split(' ').some(k => k.startsWith(q.trim().toLowerCase()));
+  const isDone = done.includes(l.n);
+  const toggle = () => setDone(d => d.includes(l.n) ? d.filter(x => x !== l.n) : [...d, l.n]);
+  const pick = a => { if (a === 'Copy' || a === 'Copied') copy(l.w); else if (a === 'Translate') go('ekselator'); else setShown(s => !s); };
+  const long = l.w.length > 8;
+  // Phone rail: the active word sits in the middle; a half-cut chip at the edge says there's more. "All 50" opens the whole syllabus.
+  const rail = React.useRef(null), railFirst = React.useRef(true), allBox = React.useRef(null);
+  const [all, setAll] = React.useState(false);
+  React.useEffect(() => {
+    const r = rail.current; if (!r) return;
+    const a = r.querySelector('.ls-row.on'), was = railFirst.current; railFirst.current = false;
+    if (!a || getComputedStyle(r).flexDirection !== 'row' || r.scrollWidth <= r.clientWidth + 4) return;
+    r.scrollTo({ left: Math.max(0, a.offsetLeft - (r.clientWidth - a.offsetWidth) / 2), behavior: was || ltReduced() ? 'auto' : 'smooth' });
+  }, [l.n, q]);
+  React.useEffect(() => {
+    if (!all) return; const html = document.documentElement; html.classList.add('ls-all-open');
+    const b = allBox.current, on = b && b.querySelector('.ls-aw.on'); if (on) b.scrollTop = Math.max(0, on.offsetTop - b.clientHeight / 2 + on.offsetHeight / 2);
+    const k = e => { if (e.key === 'Escape') setAll(false); }; addEventListener('keydown', k);
+    return () => { html.classList.remove('ls-all-open'); removeEventListener('keydown', k); };
+  }, [all]);
+  React.useEffect(() => setAll(false), [l.n]);
+  const aw = (x, n, w, tag) => <a key={x} href={'#lessons/' + x} className={'ls-aw' + (x === l.n || (x === 'durban' && isDbn) || (x === 'gateway' && isGw) ? ' on' : '') + (done.includes(n) ? ' done' : '')} onClick={() => setAll(false)}><span className="lbl">{tag || n}</span><Fit className="ls-aw-w" min={11}>{w}</Fit></a>;
+  const learnt = done.filter(n => /^\d\d$/.test(n) && n !== '00').length;
+  return (
+    <div className="lessons">
+      <aside className="card ls-side">
+        <div>
+          <div className="between lbl"><span>Fluency</span><span className="blue">{pad2(learnt) + ' / ' + L.length}</span></div>
+          <div className="bar"><i style={{ width: (learnt / L.length * 100) + '%' }}></i></div>
+          <FluencyLine style={{ marginTop: 10 }} />
+        </div>
+        <input className="field" placeholder={'Find a lesson. There are ' + L.length + '.'} value={q} onChange={e => setQ(e.target.value)} />
+        <div className="ls-list" ref={rail}>
+          <button type="button" className="ls-row ls-allb" onClick={() => setAll(true)}><span className="lbl">{'All ' + L.length + ' →'}</span></button>
+          {gwMatch && <a href="#lessons/gateway" className={'ls-row' + (isGw ? ' on' : '')}><span className="lbl ls-n">—</span><Fit className="ls-w" min={11}>Gateway</Fit><span className="lbl ls-done">Campus</span></a>}
+          {dbnMatch && <a href="#lessons/durban" className={'ls-row' + (isDbn ? ' on' : '')}><span className="lbl ls-n">00</span><Fit className="ls-w" min={11}>Durban</Fit><span className="lbl ls-done">Bonus</span></a>}
+          {list.map(x => (
+            <a key={x.n} href={'#lessons/' + x.n} className={'ls-row' + (x.n === l.n ? ' on' : '') + (done.includes(x.n) ? ' done' : '')}>
+              <span className="lbl ls-n">{x.n}</span><Fit className="ls-w" min={11}>{x.w}</Fit>{done.includes(x.n) && <span className="lbl ls-done">Learnt</span>}
+            </a>
+          ))}
+          {blist.length > 0 && <div className="lbl muted ls-grp">{'Bonus words · ' + B.length}</div>}
+          {blist.map(x => (
+            <a key={x.n} href={'#lessons/' + x.n} className={'ls-row' + (x.n === l.n ? ' on' : '') + (done.includes(x.n) ? ' done' : '')}>
+              <span className="lbl ls-n">{x.n}</span><Fit className="ls-w" min={11}>{x.w}</Fit>{done.includes(x.n) && <span className="lbl ls-done">Learnt</span>}
+            </a>
+          ))}
+          {!list.length && !blist.length && !dbnMatch && !gwMatch && <div className="muted" style={{ padding: 12 }}>No lesson for that. Yet.</div>}
+        </div>
+      </aside>
+      <article className="ls-main">
+        <div className="between"><span className="pill lbl">{isGw ? 'The campus · Not in the exam' : isDbn ? 'Lesson 00 · bonus' : isB ? 'Bonus word ' + l.n : 'Lesson ' + l.n}</span><span className="lbl">{isGw ? 'Not on the syllabus' : isDbn ? 'Before 01' : isB ? l.n + ' / B' + pad2(B.length) + ' · not in the exam' : l.n + ' / ' + L.length}</span></div>
+        <Fit as="h1" min={30} className={'hl ls-word' + (say.st === 'playing' ? ' saying' : said ? ' said' : '')} style={{ fontSize: long ? 'clamp(64px, 8.4vw, 124px)' : 'clamp(64px, 9.6vw, 140px)' }}>
+          <Sel key={l.n} className="draw sm">{l.w}<Pop items={[copied ? 'Copied' : 'Copy', shown ? 'Hide meaning' : 'Look Up', 'Translate']} active={1} onPick={pick} /></Sel>
+        </Fit>
+        <HearWord l={l} />
+        {shown ? <>
+          <p className="ls-def"><i className="pos">({l.p})</i> — {l.d}</p>
+          <div className="card ls-eg"><span className="lbl blue">E.g.</span><div className="hl ls-e">{l.e ? '“' + l.e + '”' : <span className="muted">Line in development. The writers are at the beach.</span>}</div>{l.e2 && <><span className="lbl blue">Or</span><div className="hl ls-e">“{l.e2}”</div></>}</div>
+          {isGw && <GatewayLinks />}
+          {l.map && <div className="card ls-map">
+            <div className="between lbl"><span className="blue">Fig. 1 · Where it is</span><span className="muted">29.86° S, 31.02° E · ocean included</span></div>
+            <iframe title="Map of Durban" src={'https://maps.google.com/maps?q=' + encodeURIComponent(l.map) + '&z=11&output=embed'} loading="lazy" referrerPolicy="no-referrer-when-downgrade"></iframe>
+            <div className="between" style={{ flexWrap: 'wrap' }}><span className="lbl muted">The blue bit on the right is the ocean. Joburg doesn’t have one.</span><a className="btn line sm" target="_blank" rel="noopener" href={'https://www.google.com/maps/dir/Johannesburg/' + encodeURIComponent(l.map)}>Directions from Joburg</a></div>
+          </div>}
+        </> : <div className="ls-hidden">Meaning hidden. Say it out loud, guess, then hit Look Up. Nobody’s watching. Except Gateway.</div>}
+        {!isGw && <button type="button" className={'btn sm ls-mark-m ' + (isDone ? 'soft' : 'line')} onClick={toggle}>{isDone ? 'Learnt. Lekker.' : 'Mark as learnt'}</button>}
+        <div className="row ls-nav">
+          {i > 0 && <a className="btn line sm" href={'#lessons/' + L[i - 1].n}>Previous</a>}
+          {i === 0 && <a className="btn line sm" href="#lessons/durban">Previous</a>}
+          {isB && <a className="btn line sm" href={'#lessons/' + (bi > 0 ? B[bi - 1].n : L[L.length - 1].n)}>Previous</a>}
+          {isGw ? <a className="btn primary sm" href="#lessons/01">Back to class · Lesson 01</a> : <>
+          <button type="button" className={'btn sm ls-mark ' + (isDone ? 'soft' : 'line')} onClick={toggle}>{isDone ? 'Learnt. Lekker.' : 'Mark as learnt'}</button>
+          {isB ? <a className="btn primary sm" href={bi < B.length - 1 ? '#lessons/' + B[bi + 1].n : '#exam'}>{bi < B.length - 1 ? 'Next bonus word' : 'Sit the final exam'}</a>
+            : <a className="btn primary sm" href={isDbn ? '#lessons/01' : i < L.length - 1 ? '#lessons/' + L[i + 1].n : '#exam'}>{isDbn ? 'Start Lesson 01' : i < L.length - 1 ? 'Next lesson' : 'Sit the final exam'}</a>}
+          {i === L.length - 1 && B.length > 0 && <a className="btn line sm" href={'#lessons/' + B[0].n}>{B.length + ' bonus words'}</a>}
+          </>}
+        </div>
+        <div className="lbl muted">Learn to Speak Durban. A public service by Gateway.</div>
+      </article>
+      {all && <div className="ls-all" role="dialog" aria-modal="true" aria-label="All lessons">
+        <div className="ls-all-top"><span className="lbl blue">{'The syllabus · ' + L.length + ' lessons'}</span><button type="button" className="btn line sm" onClick={() => setAll(false)}>Close</button></div>
+        <div className="ls-all-in" ref={allBox}>
+          <div className="hl ls-all-h">Pick a <Sel>word.</Sel></div>
+          <p className="muted ls-all-p">Tap one and you’re there. Quicker than the N3 on a Friday.</p>
+          <div className="ls-all-g">
+            {aw('gateway', 'gateway', 'Gateway', '—')}{aw('durban', '00', 'Durban')}
+            {L.map(x => aw(x.n, x.n, x.w))}
+          </div>
+          {B.length > 0 && <><div className="lbl muted ls-all-grp">{'Bonus words · ' + B.length + ' · not in the exam'}</div><div className="ls-all-g">{B.map(x => aw(x.n, x.n, x.w))}</div></>}
+        </div>
+      </div>}
+    </div>
+  );
+}
+
+Object.assign(window, { LessonsScreen, DURBAN_ENTRY, GATEWAY_ENTRY, GATEWAY_MAP, GATEWAY_SITE, GatewayLinks });
