@@ -1,0 +1,1 @@
+Pronunciation clips, one per dictionary entry, named by slug (aweh.mp3, no-laka.mp3, voesek.mp3 …, plus durban.mp3 and gateway.mp3). The map lives in lessons.js (window.LSD_AUDIO). A clip not in the map, or one that fails to load, simply hides its speaker.
